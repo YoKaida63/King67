@@ -1,6 +1,6 @@
 local folderToClean = "newvape"
 local folderToKeep = "profiles"
-local reinstallUrl = "https://raw.githubusercontent.com/toodiesjamming-stack/Fuzzynuts/main/NewMainScript.lua"
+local reinstallUrl = "https://raw.githubusercontent.com/YoKaida63/King67/main/NewMainScript.lua"
 
 local function deleteRecursive(path, keepPath)
     if path == keepPath then return end
@@ -32,6 +32,6 @@ for _, item in ipairs(listfiles(folderToClean)) do
     end
 end
 
-print("loading Fuzzynuts...")
+print("loading King...")
 task.wait(1)
 loadstring(game:HttpGet(reinstallUrl, true))()
