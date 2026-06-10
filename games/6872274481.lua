@@ -35757,3 +35757,142 @@ run(function()
         end
     })
 end)
+run(function()
+	local LagbackAura;
+	local Targets;
+	local Sort;
+
+	LagbackAura = vape.Categories.Utility:CreateModule({
+		Name = 'LagbackAura',
+		Function = function(callback)
+			if callback then
+				repeat
+					task.wait(0.5)
+
+					if not entitylib.isAlive then
+						continue
+					end
+
+					local plrs = entitylib.AllPosition({
+						Range = 30,
+						Wallcheck = Targets.Walls.Enabled or nil,
+						Part = 'RootPart',
+						Players = Targets.Players.Enabled,
+						NPCs = Targets.NPCs.Enabled,
+						Limit = 1,
+						Sort = sortmethods[Sort.Value]
+					})
+
+					if #plrs > 0 then
+						local progBar = lplr.PlayerGui.ActionBarScreenGui.ActionBar:FindFirstChild('ProgressBarContainer')
+
+						if not progBar then
+							continue
+						end
+
+						if progBar.ProgressBar.Size.X.Scale < 0.33 then
+							continue
+						end
+
+						Client:Get('useAbility'):SendToServer('elk_summon')
+						task.wait(0.1)
+						Client:Get('SigridBeginChargeRequest'):CallServerAsync({
+							['player'] = plrs[1].Player
+						})
+						task.wait(1)
+						Client:Get('Dismount'):SendToServer({['mountType'] = 'elk'})
+						task.wait(7)
+					end
+				until not LagbackAura.Enabled
+			end
+		end,
+		Tooltip = 'requires sigrid!'
+	})
+	Targets = LagbackAura:CreateTargets({
+		Players = true,
+		NPCs = true
+	})
+	local methods = {'Damage', 'Distance'}
+	for i in sortmethods do
+		if not table.find(methods, i) then
+			table.insert(methods, i)
+		end
+	end
+	Sort = LagbackAura:CreateDropdown({
+		Name = 'Target Mode',
+		List = methods
+	})
+end)
+run(function()
+	local AutoXP;
+
+	AutoXP = vape.Categories.Utility:CreateModule({
+		Name = 'AutoXP',
+		Function = function(callback)
+			if callback then
+				repeat task.wait(1) until bedwars.Knit.Controllers.MatchController:getMatchState() == 1
+
+				local chests = {}
+				for _, value in workspace:GetChildren() do
+					if value.Name == 'chest' then
+						table.insert(chests, value)
+					end
+				end
+
+				AutoXP:Clean(workspace.ChildAdded:Connect(function(child)
+					if child.Name == 'chest' then
+						table.insert(chests, child)
+					end
+				end))
+
+				local nearestChest = (function()
+					local nearest, dist = nil, math.huge
+					for index, value in chests do
+						if lplr:DistanceFromCharacter(value.Position) < dist then
+							dist = lplr:DistanceFromCharacter(value.Position)
+							nearest = value
+						end
+					end
+
+					return nearest
+				end)()
+
+				tweenService:Create(entitylib.character.RootPart, TweenInfo.new(0.5), {
+					CFrame = nearestChest and nearestChest.CFrame + Vector3.new(0, 5, 0) or entitylib.character.RootPart.CFrame
+				}):Play()
+				local start = tick()
+
+				repeat task.wait(2)
+					mouse1click()
+				until (tick() - start) > 30 or not AutoXP.Enabled
+
+				if AutoXP.Enabled then
+					Client:Get('ResetCharacter'):SendToServer()
+					bedwars.QueueController:joinQueue(store.queueType)
+				end
+			end
+		end
+	})
+end)
+run(function()
+	local funni
+	local last = os.clock()
+	funni = vape.Categories.Blatant:CreateModule({
+		Name = 'increase dmg',
+		Tooltip = 'Gives you a sugar rush to smoke your opponents!',
+		Function = function(callback)
+			if callback then
+				repeat
+					if os.clock() - last >= 1 then
+						Client:Get('PlayerEatCake'):SendToServer({
+							block = replicatedStorage.Items.cake_one
+						})
+						last = os.clock()
+					end
+					task.wait()
+				until (not funni.Enabled)
+			end
+		end
+	})
+end)
+		
