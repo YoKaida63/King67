@@ -5136,7 +5136,7 @@ run(function()
 	end
 
 	ProjectileAimbot = vape.Categories.Blatant:CreateModule({
-		Name = 'ProjectileAimbot',
+		Name = 'King PA',
 		Function = function(callback)
 			if callback then
 				if PAFOVCircle then
