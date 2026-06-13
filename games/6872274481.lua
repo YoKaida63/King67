@@ -4518,217 +4518,70 @@ run(function()
         end
     end
 
-    HitBoxes = vape.Categories.Blatant:CreateModule({
-        Name = 'HitBoxesV2',
-        Function = function(callback)
-            if callback then
-                updateExpandSize(Expand.Value)
+HitBoxes = vape.Categories.Blatant:CreateModule({
+    Name = "King HitBoxes",
+    Tooltip = "Expands attack hitbox",
 
-                -- Sword mode
-                if swordModeEnabled() then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (Expand.Value / 3))
-                    set = true
+    Function = function(enabled)
+        if not enabled then
+            hitboxesActive = false
+
+            if set then
+                debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, 3.8)
+                set = nil
+            end
+
+            clearHitboxes()
+            return
+        end
+
+        updateExpandSize(Expand.Value)
+
+        if swordModeEnabled() then
+            debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, Expand.Value / 3)
+            set = true
+        end
+
+        if not playerModeEnabled() then return end
+
+        HitBoxes:Clean(entitylib.Events.EntityAdded:Connect(function(ent)
+            if not AutoToggle or not AutoToggle.Enabled or hitboxesActive then
+                createHitbox(ent)
+            end
+        end))
+
+        HitBoxes:Clean(entitylib.Events.EntityRemoving:Connect(function(ent)
+            local obj = objects[ent]
+            if obj then obj:Destroy(); objects[ent] = nil end
+        end))
+
+        (AutoToggle and AutoToggle.Enabled) and handleAutoToggle() or refreshAllHitboxes()
+
+        local counter = 0
+
+        HitBoxes:Clean(runService.Heartbeat:Connect(function()
+            if not Targets or not Targets.Walls or not Targets.Walls.Enabled then return end
+
+            counter += 1
+            if counter % 20 ~= 0 then return end
+
+            for ent, part in pairs(objects) do
+                if isTargetBehindWall(ent) then
+                    part:Destroy()
+                    objects[ent] = nil
                 end
+            end
 
-                -- Player mode
-                if playerModeEnabled() then
-                    HitBoxes:Clean(entitylib.Events.EntityAdded:Connect(function(ent)
-                        if AutoToggle and AutoToggle.Enabled then
-                            if hitboxesActive then createHitbox(ent) end
-                        else
-                            createHitbox(ent)
-                        end
-                    end))
-                    HitBoxes:Clean(entitylib.Events.EntityRemoving:Connect(function(ent)
-                        local obj = objects[ent]
-                        if obj then obj:Destroy() objects[ent] = nil end
-                    end))
-                    if AutoToggle and AutoToggle.Enabled then
-                        handleAutoToggle()
-                    else
-                        refreshAllHitboxes()
+            for _, ent in ipairs(entitylib.List) do
+                if not objects[ent] then
+                    if not AutoToggle or not AutoToggle.Enabled or hitboxesActive then
+                        createHitbox(ent)
                     end
-                    local hitboxThrottleCounter = 0
-                    HitBoxes:Clean(runService.Heartbeat:Connect(function()
-                        if not Targets or not Targets.Walls or not Targets.Walls.Enabled then return end
-                        hitboxThrottleCounter = hitboxThrottleCounter + 1
-                        if hitboxThrottleCounter % 20 ~= 0 then return end
-                        for ent, part in pairs(objects) do
-                            if isTargetBehindWall(ent) then
-                                part:Destroy()
-                                objects[ent] = nil
-                            end
-                        end
-                        local entityList = entitylib.List
-                        for i = 1, #entityList do
-                            local ent = entityList[i]
-                            if not objects[ent] then
-                                if AutoToggle and AutoToggle.Enabled then
-                                    if hitboxesActive then createHitbox(ent) end
-                                else
-                                    createHitbox(ent)
-                                end
-                            end
-                        end
-                    end))
-                end
-            else
-                hitboxesActive = false
-                if set then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, 3.8)
-                    set = nil
-                end
-                clearHitboxes()
-            end
-        end,
-        Tooltip = 'Expands attack hitbox'
-    })
-
-    Targets = HitBoxes:CreateTargets({
-        Players = true,
-        Walls = false,
-        NPCs = false,
-        Function = function()
-            if HitBoxes.Enabled and playerModeEnabled() then
-                if AutoToggle and AutoToggle.Enabled then
-                    if hitboxesActive then refreshAllHitboxes() end
-                else
-                    refreshAllHitboxes()
                 end
             end
-        end
-    })
-
-    SwordMode = HitBoxes:CreateToggle({
-        Name = 'Sword Mode',
-        Default = true,
-        Tooltip = 'Increases the sword swing range around you',
-        Function = function(callback)
-            if HitBoxes.Enabled then
-                if callback then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (Expand.Value / 3))
-                    set = true
-                else
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, 3.8)
-                    set = nil
-                end
-            end
-        end
-    })
-
-    PlayerMode = HitBoxes:CreateToggle({
-        Name = 'Player Mode',
-        Default = true,
-        Tooltip = 'Increases the players hitbox size',
-        Function = function(callback)
-            if AutoToggle then AutoToggle.Object.Visible = callback end
-            if Visible then Visible.Object.Visible = callback end
-            if VisibleColor then VisibleColor.Object.Visible = callback and Visible and Visible.Enabled end
-            if HitBoxes.Enabled then
-                if callback then
-                    refreshAllHitboxes()
-                else
-                    clearHitboxes()
-                end
-            end
-        end
-    })
-
-    Expand = HitBoxes:CreateSlider({
-        Name = 'Expand amount',
-        Min = 0,
-        Max = 50,
-        Default = 14.4,
-        Decimal = 10,
-        Function = function(val)
-            updateExpandSize(val)
-            if HitBoxes.Enabled then
-                if swordModeEnabled() then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (val / 3))
-                end
-                if playerModeEnabled() then
-                    for _, part in pairs(objects) do part.Size = cachedExpandSize end
-                end
-            end
-        end,
-        Suffix = function(val)
-            return val == 1 and 'stud' or 'studs'
-        end
-    })
-
-    AutoToggle = HitBoxes:CreateToggle({
-        Name = 'Auto Toggle',
-        Default = false,
-        Tooltip = 'Automatically enables hitbox when holding a sword',
-        Function = function(callback)
-            if callback then
-                if autoToggleConnection then autoToggleConnection:Disconnect() end
-                hitboxesActive = false
-                autoToggleFrameCounter = 0
-                autoToggleConnection = runService.Heartbeat:Connect(function()
-                    autoToggleFrameCounter = autoToggleFrameCounter + 1
-                    if autoToggleFrameCounter % 5 == 0 then
-                        handleAutoToggle()
-                    end
-                end)
-                HitBoxes:Clean(autoToggleConnection)
-                handleAutoToggle()
-            else
-                if autoToggleConnection then
-                    autoToggleConnection:Disconnect()
-                    autoToggleConnection = nil
-                end
-                hitboxesActive = false
-                if HitBoxes.Enabled and playerModeEnabled() then
-                    refreshAllHitboxes()
-                end
-            end
-        end
-    })
-
-    Visible = HitBoxes:CreateToggle({
-        Name = 'Visible',
-        Default = false,
-        Tooltip = 'Makes the hitbox visible on screen',
-        Function = function(callback)
-            if VisibleColor then VisibleColor.Object.Visible = callback end
-            if HitBoxes.Enabled and playerModeEnabled() then
-                local transparency = callback and 0.5 or 1
-                local col = callback and VisibleColor and (colorList[VisibleColor.Value] or colorList.Red) or nil
-                for _, part in pairs(objects) do
-                    part.Transparency = transparency
-                    if col then part.Color = col end
-                end
-            end
-        end
-    })
-
-    VisibleColor = HitBoxes:CreateDropdown({
-        Name = 'Hitbox Color',
-        List = {'Red', 'Blue', 'Green', 'Yellow', 'Orange', 'Purple', 'White', 'Cyan', 'Pink', 'Black'},
-        Default = 'Red',
-        Visible = false,
-        Tooltip = 'Color of the visible hitbox',
-        Function = function(val)
-            if HitBoxes.Enabled and playerModeEnabled() and Visible.Enabled then
-                local col = colorList[val] or colorList.Red
-                for _, part in pairs(objects) do part.Color = col end
-            end
-        end
-    })
-
-    task.spawn(function()
-        repeat task.wait() until SwordMode and PlayerMode
-        if AutoToggle then AutoToggle.Object.Visible = true end
-        if Visible then Visible.Object.Visible = true end
-    end)
-
-    task.defer(function()
-        if VisibleColor and VisibleColor.Object then
-            VisibleColor.Object.Visible = false
-        end
-    end)
-end)
+        end))
+    end
+})
 	
 run(function()
 	vape.Categories.Blatant:CreateModule({
