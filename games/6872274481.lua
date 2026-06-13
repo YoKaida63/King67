@@ -2578,6 +2578,72 @@ run(function()
 				lastValidTarget = nil
 			end
 		end,
+								local CameraController = {}
+CameraController.__index = CameraController
+
+function CameraController.new(camera)
+    local self = setmetatable({}, CameraController)
+
+    self.Camera = camera
+    self.Target = nil
+    self.Smoothness = 8
+    self.ShakeEnabled = false
+    self.ShakeStrength = 0
+
+    self._shakeTime = 0
+
+    return self
+end
+
+function CameraController:SetTarget(part)
+    self.Target = part
+end
+
+function CameraController:SetSmoothness(value)
+    self.Smoothness = math.clamp(value, 1, 20)
+end
+
+function CameraController:SetShake(enabled, strength)
+    self.ShakeEnabled = enabled
+    self.ShakeStrength = strength or 0
+end
+
+local function applyShake(self, pos, dt)
+    if not self.ShakeEnabled or self.ShakeStrength <= 0 then
+        return pos
+    end
+
+    self._shakeTime += dt
+
+    local s = self.ShakeStrength * 0.05
+
+    local offset = Vector3.new(
+        math.sin(self._shakeTime * 18) * s,
+        math.cos(self._shakeTime * 14) * s,
+        math.sin(self._shakeTime * 10) * s * 0.5
+    )
+
+    return pos + offset
+end
+
+function CameraController:Update(dt)
+    if not self.Target then return end
+    if not self.Target:IsDescendantOf(workspace) then return end
+
+    local targetPos = self.Target.Position
+    targetPos = applyShake(self, targetPos, dt)
+
+    local cam = self.Camera
+    local goal = CFrame.lookAt(cam.CFrame.Position, targetPos)
+
+    -- FPS-independent smoothing
+    local alpha = 1 - math.exp(-self.Smoothness * dt)
+
+    cam.CFrame = cam.CFrame:Lerp(goal, alpha)
+end
+
+return CameraController
+								
 		Tooltip = 'Aim assist with smooth target tracking'
 	})
 
