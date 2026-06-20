@@ -4429,6 +4429,198 @@ run(function()
         end
     end)
 end)
+run(function()
+    local AutoBuyBlocks
+    local GUICheck
+    local DelaySlider
+    local running = false
+
+    local function getShopNPC()
+        local shopFound = false
+        if entitylib.isAlive then
+            local localPosition = entitylib.character.RootPart.Position
+            for _, v in store.shop do
+                if (v.RootPart.Position - localPosition).Magnitude <= 20 then
+                    shopFound = true
+                    break
+                end
+            end
+        end
+        return shopFound
+    end
+
+    AutoBuyBlocks = vape.Categories.Inventory:CreateModule({
+        Name = "AutoBuyBlocks",
+        Tooltip = "auto buy blocks",
+        Function = function(enabled)
+            running = enabled
+            if enabled then
+                task.spawn(function()
+                    while running do
+                        local canBuy = true
+                        if GUICheck.Enabled then
+                            if bedwars.AppController:isAppOpen('BedwarsItemShopApp') then
+                                canBuy = true
+                            else
+                                canBuy = false
+                            end
+                        else
+                            canBuy = getShopNPC()
+                        end
+                        if canBuy then
+                            local args = {
+                                {
+                                    shopItem = {
+                                        currency = "iron",
+                                        itemType = "wool_white",
+                                        amount = 16,
+                                        price = 8,
+                                        disabledInQueue = {"mine_wars"},
+                                        category = "Blocks"
+                                    },
+                                    shopId = "1_item_shop"
+                                }
+                            }
+                            pcall(function()
+                                bedwars.Client:Get(remotes.BedwarsPurchaseItem).instance:InvokeServer(unpack(args))
+                            end)
+                        end
+                        task.wait(DelaySlider.Value)
+                    end
+                end)
+            end
+        end
+    })
+
+    GUICheck = AutoBuyBlocks:CreateToggle({
+        Name = "GUI Check",
+        Default = false
+    })
+
+    DelaySlider = AutoBuyBlocks:CreateSlider({
+        Name = "Delay",
+        Min = 0,
+        Max = 2,
+        Default = 0.1,
+        Decimal = 10,
+    })
+end)
+
+run(function()
+	local ProjectileAura
+	local Targets
+	local Range
+	local List
+	local rayCheck = RaycastParams.new()
+	rayCheck.FilterType = Enum.RaycastFilterType.Include
+	local projectileRemote = {InvokeServer = function() end}
+	local FireDelays = {}
+	task.spawn(function()
+		projectileRemote = bedwars.Client:Get(remotes.FireProjectile).instance
+	end)
+	
+	local function getAmmo(check)
+		for _, item in store.inventory.inventory.items do
+			if check.ammoItemTypes and table.find(check.ammoItemTypes, item.itemType) then
+				return item.itemType
+			end
+		end
+	end
+	
+	local function getProjectiles()
+		local items = {}
+		for _, item in store.inventory.inventory.items do
+			local proj = bedwars.ItemMeta[item.itemType].projectileSource
+			local ammo = proj and getAmmo(proj)
+			if ammo and table.find(List.ListEnabled, ammo) then
+				table.insert(items, {
+					item,
+					ammo,
+					proj.projectileType(ammo),
+					proj
+				})
+			end
+		end
+		return items
+	end
+	
+	ProjectileAura = vape.Categories.Blatant:CreateModule({
+		Name = 'ProjectileAura',
+		Function = function(callback)
+			if callback then
+				repeat
+					if (workspace:GetServerTimeNow() - bedwars.SwordController.lastAttack) > 0.5 then
+						local ent = entitylib.EntityPosition({
+							Part = 'RootPart',
+							Range = Range.Value,
+							Players = Targets.Players.Enabled,
+							NPCs = Targets.NPCs.Enabled,
+							Wallcheck = Targets.Walls.Enabled
+						})
+	
+						if ent then
+							local pos = entitylib.character.RootPart.Position
+							for _, data in getProjectiles() do
+								local item, ammo, projectile, itemMeta = unpack(data)
+								if (FireDelays[item.itemType] or 0) < tick() then
+									rayCheck.FilterDescendantsInstances = {workspace.Map}
+									local meta = bedwars.ProjectileMeta[projectile]
+									local projSpeed, gravity = meta.launchVelocity, meta.gravitationalAcceleration or 196.2
+									local calc = prediction.SolveTrajectory(pos, projSpeed, gravity, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, ent.Jumping and 42.6 or nil, rayCheck)
+									if calc then
+										targetinfo.Targets[ent] = tick() + 1
+										local switched = switchItem(item.tool)
+	
+										task.spawn(function()
+											local dir, id = CFrame.lookAt(pos, calc).LookVector, httpService:GenerateGUID(true)
+											local shootPosition = (CFrame.new(pos, calc) * CFrame.new(Vector3.new(-bedwars.BowConstantsTable.RelX, -bedwars.BowConstantsTable.RelY, -bedwars.BowConstantsTable.RelZ))).Position
+											bedwars.ProjectileController:createLocalProjectile(meta, ammo, projectile, shootPosition, id, dir * projSpeed, {drawDurationSeconds = 1})
+											local res = PR:InvokeServer(item.tool, meta, shootPosition, dir * projSpeed)
+											if not res then
+												FireDelays[item.itemType] = tick()
+											else
+												local shoot = itemMeta.launchSound
+												shoot = shoot and shoot[math.random(1, #shoot)] or nil
+												if shoot then
+													bedwars.SoundManager:playSound(shoot)
+												end
+											end
+										end)
+	
+										FireDelays[item.itemType] = tick() + itemMeta.fireDelaySec
+										if switched then
+											task.wait(0.05)
+										end
+									end
+								end
+							end
+						end
+					end
+					task.wait(0.1)
+				until not ProjectileAura.Enabled
+			end
+		end,
+		Tooltip = 'Shoots people around you'
+	})
+	Targets = ProjectileAura:CreateTargets({
+		Players = true,
+		Walls = true
+	})
+	List = ProjectileAura:CreateTextList({
+		Name = 'Projectiles',
+		Default = {'arrow', 'snowball'}
+	})
+	Range = ProjectileAura:CreateSlider({
+		Name = 'Range',
+		Min = 1,
+		Max = 50,
+		Default = 50,
+				Visible = true,
+		Suffix = function(val)
+			return val == 1 and 'stud' or 'studs'
+		end
+	})
+end)
 			local Attacking
 run(function()
     local Killaura
