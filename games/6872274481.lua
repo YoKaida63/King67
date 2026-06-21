@@ -4505,6 +4505,262 @@ run(function()
         Decimal = 10,
     })
 end)
+run(function()
+    local InfiniteShield
+    
+    InfiniteShield = vape.Categories.Blatant:CreateModule({
+        Name = 'Infinite Shield',
+        Function = function(callback)
+            if callback then
+                repeat
+                    bedwars.Client:Get('PlayerEatCake'):SendToServer({block = replicatedStorage.Items.cake_one})
+                    task.wait(0.1)
+                until not InfiniteShield.Enabled
+            end
+        end,
+        Tooltip = 'Gives you +10 shield infinitely'
+    })
+end)
+run(function()
+    local TerraAimbot
+    local Range
+    local Mode
+    
+    local old
+    
+    TerraAimbot = vape.Categories.Blatant:CreateModule({
+        Name = 'Terra Aimbot',
+        Function = function(callback)
+            if callback then
+                old = bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition
+                bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition = function(...)
+                    local origin, dir = select(2, ...)
+                    local plr = entitylib['Entity'.. Mode.Value]({
+                        Part = 'RootPart',
+                        Range = Range.Value,
+                        Origin = origin,
+                        Players = true,
+                        Wallcheck = true
+                    })
+    
+                    if plr then
+                        local calc = prediction.SolveTrajectory(origin, 100, 20, plr.RootPart.Position, plr.RootPart.Velocity, workspace.Gravity, plr.HipHeight, plr.Jumping and 42.6 or nil)
+    
+                        if calc then
+                            for i, v in debug.getstack(2) do
+                                if v == dir then
+                                    debug.setstack(2, i, CFrame.lookAt(origin, calc).LookVector)
+                                end
+                            end
+                        end
+                    end
+    
+                    return old(...)
+                end
+            end
+        end,
+        Tooltip = 'Silently adjusts where terra blocks are heading towards.'
+    })
+    
+    Mode = TerraAimbot:CreateDropdown({
+        Name = 'Mode',
+        List = {'Position', 'Mouse'},
+        Default = 'Mouse'
+    })
+    Range = TerraAimbot:CreateSlider({
+        Name = 'Range',
+        Min = 1,
+        Max = 1000,
+        Default = 1000,
+        Suffix = function(val)
+            return val <= 1 and 'studs' or 'stud'
+        end
+    })
+end)
+																																												run(function()
+    local VulcanAimbot
+    local Targets
+    local Range
+    local Sort
+    
+    VulcanAimbot = vape.Categories.Blatant:CreateModule({
+        Name = 'Vulcan Aimbot',
+        Function = function(callback)
+            if callback then
+                repeat
+                    if entitylib.isAlive then
+                        local turret = bedwars.Store:getState().Game.selectedTurret
+                        if turret then
+                            local origin = turret.Rotate.Position
+                            local ent = entitylib.EntityMouse({
+                                Range = Range.Value,
+                                Origin = origin,
+                                Wallcheck = Targets.Walls.Enabled or nil,
+                                Part = 'RootPart',
+                                Players = Targets.Players.Enabled,
+                                NPCs = Targets.NPCs.Enabled,
+                                Sort = sortmethods[Sort.Value]
+                            })
+                            if ent then
+                                local pos = prediction.SolveTrajectory(origin, 320, 10, ent.RootPart.Position, ent.RootPart.Velocity, workspace.Gravity, ent.HipHeight, nil, store.airRay)
+                                if pos then
+                                    local delta = pos - origin
+    
+                                    -- mathing
+                                    bedwars.TurretCameraController.angleX = math.atan2(-delta.X, -delta.Z)
+                                    bedwars.TurretCameraController.angleY = math.clamp(math.atan2(delta.Y, math.sqrt(delta.X^2 + delta.Z^2)), -0.8, 0.8)
+                                end
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                until not VulcanAimbot.Enabled
+            end
+        end,
+        Tooltip = 'Automatically aims ur camera toward opponents.'
+    })
+    
+    Targets = VulcanAimbot:CreateTargets({Walls = true, Players = true})
+    local methods = {'Distance', 'Damage'}
+    for i in sortmethods do
+        if not table.find(methods, i) then
+            table.insert(methods, i)
+        end
+    end
+    Sort = VulcanAimbot:CreateDropdown({
+        Name = 'Target mode',
+        List = methods,
+        Default = methods[1]
+    })
+    Range = VulcanAimbot:CreateSlider({
+        Name = 'Range',
+        Min = 1,
+        Max = 1000,
+        Default = 500
+    })
+end)
+																																														run(function()
+    local TerraAimbot
+    local Range
+    local Mode
+    
+    local old
+    
+    TerraAimbot = vape.Categories.Blatant:CreateModule({
+        Name = 'Terra Aimbot',
+        Function = function(callback)
+            if callback then
+                old = bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition
+                bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition = function(...)
+                    local origin, dir = select(2, ...)
+                    local plr = entitylib['Entity'.. Mode.Value]({
+                        Part = 'RootPart',
+                        Range = Range.Value,
+                        Origin = origin,
+                        Players = true,
+                        Wallcheck = true
+                    })
+    
+                    if plr then
+                        local calc = prediction.SolveTrajectory(origin, 100, 20, plr.RootPart.Position, plr.RootPart.Velocity, workspace.Gravity, plr.HipHeight, plr.Jumping and 42.6 or nil)
+    
+                        if calc then
+                            for i, v in debug.getstack(2) do
+                                if v == dir then
+                                    debug.setstack(2, i, CFrame.lookAt(origin, calc).LookVector)
+                                end
+                            end
+                        end
+                    end
+    
+                    return old(...)
+                end
+            end
+        end,
+        Tooltip = 'Silently adjusts where terra blocks are heading towards.'
+    })
+    
+    Mode = TerraAimbot:CreateDropdown({
+        Name = 'Mode',
+        List = {'Position', 'Mouse'},
+        Default = 'Mouse'
+    })
+    Range = TerraAimbot:CreateSlider({
+        Name = 'Range',
+        Min = 1,
+        Max = 1000,
+        Default = 1000,
+        Suffix = function(val)
+            return val <= 1 and 'studs' or 'stud'
+        end
+    })
+end)
+local InfiniteFly
+run(function()
+    local HiddenPart = Instance.new('Part')
+    HiddenPart.Parent = workspace
+    HiddenPart.Transparency = 1
+    HiddenPart.CanQuery = false
+    HiddenPart.CanTouch = false
+    HiddenPart.CanCollide = false
+    HiddenPart.Anchored = true
+
+    local oldTransparency = {}
+    local function doCharacterThing()
+        if entitylib.isAlive then
+            for index, value in entitylib.character.Character:GetDescendants() do
+                if value:IsA('Part') or value:IsA('BasePart') then
+                    oldTransparency[value] = value.Transparency
+
+                    value.Transparency = 1
+                end
+            end
+        end
+    end
+
+    local function revertCharacter()
+        if entitylib.isAlive then
+            for index, value in entitylib.character.Character:GetDescendants() do
+                if value:IsA('Part') or value:IsA('BasePart') then
+                    value.Transparency = oldTransparency[value]
+                end
+            end
+        end
+    end
+
+    InfiniteFly = vape.Categories.Blatant:CreateModule({
+        Name = 'InfiniteFly',
+        Function = function(callback)
+            gameCamera.CameraSubject = callback and HiddenPart or entitylib.character.Character
+
+            if callback then
+                doCharacterThing()
+                HiddenPart.CFrame = entitylib.character.Character.Head.CFrame
+
+                entitylib.character.RootPart.CFrame = CFrame.new(Vector3.new(entitylib.character.RootPart.CFrame.X, 210, entitylib.character.RootPart.CFrame.Z))
+
+                InfiniteFly:Clean(runService.RenderStepped:Connect(function(dt: number)
+                    if not entitylib.isAlive then
+                        return
+                    end
+
+                    HiddenPart.CFrame = CFrame.new(Vector3.new(entitylib.character.RootPart.Position.X, HiddenPart.CFrame.Y, entitylib.character.RootPart.Position.Z))
+
+                    if entitylib.character.RootPart.CFrame.Y < -75 then
+                        entitylib.character.RootPart.CFrame = CFrame.new(Vector3.new(entitylib.character.RootPart.CFrame.X, 210, entitylib.character.RootPart.CFrame.Z))
+                    end
+                end))
+            else
+                revertCharacter()
+            end
+        end,
+        ExtraText = function()
+            return 'Heatseeker'
+        end
+    })
+end)		
+
+
 
 run(function()
 	local ProjectileAura
