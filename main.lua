@@ -1,3 +1,4 @@
+local King=Path2DControlPoint.new(UDim2.new(0,0,0,0))
 repeat task.wait() until game:IsLoaded()
 if shared.vape then shared.vape:Uninject() end
 
