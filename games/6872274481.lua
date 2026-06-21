@@ -8459,6 +8459,8 @@ run(function()
 			end
 		end
 	end
+
+    
 	
 	LootESP = vape.Categories.Render:CreateModule({
 		Name = 'LootESP',
@@ -11014,7 +11016,114 @@ run(function()
         end
     })
 end)
+												
+run(function()
+    local AutoBalloon
+    
+    AutoBalloon = vape.Categories.Utility:CreateModule({
+        Name = 'Auto Balloon',
+        Function = function(callback)
+            if callback then
+                repeat task.wait() until store.matchState ~= 0 or (not AutoBalloon.Enabled)
+                if not AutoBalloon.Enabled then return end
+    
+                local lowestpoint = math.huge
+                for _, v in store.blocks do
+                    local point = (v.Position.Y - (v.Size.Y / 2)) - 50
+                    if point < lowestpoint then 
+                        lowestpoint = point 
+                    end
+                end
+    
+                repeat
+                    if entitylib.isAlive then
+                        if entitylib.character.RootPart.Position.Y < lowestpoint and (lplr.Character:GetAttribute('InflatedBalloons') or 0) < 3 then
+                            local balloon = getItem('balloon')
+                            if balloon then
+                                for _ = 1, 3 do 
+                                    bedwars.BalloonController:inflateBalloon() 
+                                end
+                            end
+                            task.wait(0.1)
+                        end
+                    end
+                    task.wait(0.1)
+                until not AutoBalloon.Enabled
+            end
+        end,
+        Tooltip = 'Inflates when you fall into the void'
+    })
+end)
+													run(function()
+	local color, neon
+	local Clouds = vape.Legit:CreateModule({
+		Name = 'Clouds',
+		Function = function(callback)
+			if callback then
+				local clouds = workspace:FindFirstChild('Clouds')
+				if clouds then
+					for _, v in clouds:GetChildren() do
+						if v:IsA('BasePart') then
+							v.Color = Color3.fromHSV(color.Hue, color.Sat, color.Value)
+							v.Transparency = 1 - color.Opacity
+							v.Material = neon.Enabled and Enum.Material.Neon or Enum.Material.SmoothPlastic
+						end
+					end
 
+					clouds:Clean(clouds.ChildAdded:Connect(function(child)
+						if child:IsA('BasePart') then
+							child.Color = Color3.fromHSV(color.Hue, color.Sat, color.Value)
+							child.Transparency = 1 - color.Opacity
+							child.Material = neon.Enabled and Enum.Material.Neon or Enum.Material.SmoothPlastic
+						end
+					end))
+				end
+			else
+				local clouds = workspace:FindFirstChild('Clouds')
+				if clouds then
+					for _, v in clouds:GetChildren() do
+						if v:IsA('BasePart') then
+							v.Color = Color3.new(1, 1, 1)
+							v.Transparency = 0
+							v.Material = Enum.Material.SmoothPlastic
+						end
+					end
+				end
+			end
+		end,
+		Tooltip = 'Adds clouds to the sky'
+	})
+
+	color = Clouds:CreateColorSlider({
+		Name = 'Color',
+		Function = function(hue, sat, val)
+			local clouds = workspace:FindFirstChild('Clouds')
+			if clouds then
+				for _, v in clouds:GetChildren() do
+					if v:IsA('BasePart') then
+						v.Color = Color3.fromHSV(hue, sat, val)
+						v.Transparency = 1 - color.Opacity
+					end
+				end
+			end
+		end
+	})
+
+	neon = Clouds:CreateToggle({
+		Name = 'Neon',
+		Function = function(callback)
+			local clouds = workspace:FindFirstChild('Clouds')
+			if clouds then
+				for _, v in clouds:GetChildren() do
+					if v:IsA('BasePart') then
+						v.Material = callback and Enum.Material.Neon or Enum.Material.SmoothPlastic
+					end
+				end
+			end
+		end
+	})
+end)
+																
 run(function()
     local AutoCounter
     local tntCount
