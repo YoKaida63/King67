@@ -4735,6 +4735,7 @@ run(function()
 		Tooltip = 'Lets you sprint with a speed potion.'
 	})
 end)
+																																								
 
 -- King killaura 
 local Attacking
@@ -6796,7 +6797,363 @@ run(function()
         Default = false
     })
 end)
+																																																																										run(function()
+	local AutoVulcan
+	local Targets
+	local Sort
+	local Distance
+	local Prediction
 
+	local NetManaged = game:GetService("ReplicatedStorage").rbxts_include.node_modules["@rbxts"].net.out._NetManaged
+	local AimTurretRemote = NetManaged:FindFirstChild("AimTurret")
+	local ProjectileFireRemote = NetManaged:FindFirstChild("ProjectileFire")
+	local ProjectileHitRemote = NetManaged:FindFirstChild("ProjectileHit")
+	local RaycastTurretRemote = NetManaged:FindFirstChild("RaycastTurret")
+
+	local turretFireTimes = {}
+	local turretTargets = {}
+	local turretThreads = {}
+
+	local function tableFind(tab, val)
+		for _, v in ipairs(tab) do
+			if v == val then return true end
+		end
+		return false
+	end
+
+	local function getOwnedTurrets()
+		local turrets = {}
+		for _, block in ipairs(store.blocks or {}) do
+			if block.Name == "camera_turret"
+				and block:GetAttribute("PlacedByUserId") == lplr.UserId
+				and block.Parent
+			then
+				table.insert(turrets, block)
+			end
+		end
+		return turrets
+	end
+
+	local function isTargetValid(ent, turretPos)
+		if not ent or not ent.Character then return false end
+		if not ent.RootPart or not ent.RootPart.Parent then return false end
+		if (ent.Character:GetAttribute("Health") or 0) <= 0 then return false end
+		if (turretPos - ent.RootPart.Position).Magnitude > (Distance and Distance.Value or 1000) then return false end
+		return true
+	end
+
+	local function getTarget(turret)
+		local turretPos = turret.Position
+		local locked = turretTargets[turret]
+		if isTargetValid(locked, turretPos) then
+			return locked
+		end
+
+		local ent = entitylib.EntityPosition({
+			Origin = turretPos,
+			Range = Distance and Distance.Value or 1000,
+			Part = "RootPart",
+			Players = Targets and Targets.Players.Enabled or true,
+			NPCs = Targets and Targets.NPCs.Enabled or true,
+			Sort = sortmethods[Sort and Sort.Value or 'Distance'] or sortmethods.Distance,
+		})
+
+		turretTargets[turret] = ent
+		return ent
+	end
+
+	local function fireTurret(turret)
+		if not turret or not turret.Parent then return end
+
+		local turretPos = turret.Position
+		local blockPos = bedwars.BlockController:getBlockPosition(turretPos)
+		local ent = getTarget(turret)
+		if not ent or not ent.RootPart then return end
+
+		local torso = ent.Character:FindFirstChild("UpperTorso")
+			or ent.Character:FindFirstChild("Torso")
+			or ent.RootPart
+		local targetPos = torso.Position
+
+		if Prediction and Prediction.Enabled then
+			local vel = ent.RootPart.Velocity or Vector3.zero
+			local travelTime = math.max((turretPos - targetPos).Magnitude / 300, 0.01)
+			targetPos = targetPos + Vector3.new(vel.X, vel.Y * 0.3, vel.Z) * travelTime
+		end
+
+		local lookDir = targetPos - turretPos
+		if lookDir.Magnitude < 0.1 then return end
+		lookDir = lookDir.Unit
+
+		local flatMag = Vector3.new(lookDir.X, 0, lookDir.Z).Magnitude
+		local yaw = math.atan2(-lookDir.X, -lookDir.Z)
+		local pitch = math.atan2(lookDir.Y, flatMag > 0 and flatMag or 0.001)
+
+		if AimTurretRemote then
+			pcall(function()
+				AimTurretRemote:FireServer({
+					angleX = math.deg(pitch),
+					angleY = math.deg(yaw),
+					turretBlockPos = blockPos,
+				})
+			end)
+		end
+
+		local now = tick()
+		if (now - (turretFireTimes[turret] or 0)) < 0.08 then return end
+		turretFireTimes[turret] = now
+
+		local fireId = httpService:GenerateGUID(false):sub(1, 8)
+		local shotId = httpService:GenerateGUID(false):sub(1, 8)
+		local targetChar = ent.Character
+		local shootOrigin = turretPos + lookDir * 2 + Vector3.new(0, 1, 0)
+		local velocity = lookDir * 300
+
+		task.spawn(function()
+			local firedId
+			if ProjectileFireRemote then
+				pcall(function()
+					firedId = ProjectileFireRemote:InvokeServer(
+						turret, nil, "turretBullet",
+						shootOrigin, turretPos, velocity,
+						fireId,
+						{ shotId = shotId, drawDurationSec = 0 },
+						workspace:GetServerTimeNow() - 0.045
+					)
+				end)
+			elseif RaycastTurretRemote then
+				pcall(function()
+					local targetDir = (targetPos - turretPos).Unit * 500
+					RaycastTurretRemote:FireServer(turret, turretPos + Vector3.new(0, 1, 0), targetDir, blockPos)
+				end)
+			end
+
+			if not firedId then
+				turretTargets[turret] = nil
+				return
+			end
+
+			task.wait(0.05)
+			if not targetChar or not targetChar.Parent then return end
+			if (targetChar:GetAttribute("Health") or 0) <= 0 then return end
+
+			if ProjectileHitRemote then
+				pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
+				task.wait(0.02)
+				if targetChar and targetChar.Parent and (targetChar:GetAttribute("Health") or 0) > 0 then
+					pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
+				end
+			end
+		end)
+	end
+
+	local function startTurretLoop(turret)
+		if turretThreads[turret] then return end
+
+		turretThreads[turret] = task.spawn(function()
+			while AutoVulcan.Enabled and turret and turret.Parent do
+				if entitylib.isAlive then
+					pcall(fireTurret, turret)
+				end
+				task.wait(0.08)
+			end
+			turretThreads[turret] = nil
+			turretTargets[turret] = nil
+			turretFireTimes[turret] = nil
+		end)
+	end
+
+	local function stopAllLoops()
+		for _, thread in pairs(turretThreads) do
+			pcall(task.cancel, thread)
+		end
+		table.clear(turretThreads)
+		table.clear(turretTargets)
+		table.clear(turretFireTimes)
+	end
+
+	AutoVulcan = vape.Categories.Kits:CreateModule({
+		Name = 'Auto Vulcan',
+		Tooltip = 'All turrets auto aim',
+		Function = function(callback)
+			if callback then
+				AutoVulcan:Clean(task.spawn(function()
+					while AutoVulcan.Enabled do
+						for _, turret in ipairs(getOwnedTurrets()) do
+							startTurretLoop(turret)
+						end
+						for turret, thread in pairs(turretThreads) do
+							if not turret.Parent then
+								pcall(task.cancel, thread)
+								turretThreads[turret] = nil
+								turretTargets[turret] = nil
+								turretFireTimes[turret] = nil
+							end
+						end
+						task.wait(1)
+					end
+				end))
+				AutoVulcan:Clean(stopAllLoops)
+			else
+				stopAllLoops()
+			end
+		end,
+	})
+
+	Targets = AutoVulcan:CreateTargets({
+		Players = true,
+		NPCs = true,
+		Walls = false,
+	})
+
+	Distance = AutoVulcan:CreateSlider({
+		Name = 'Distance',
+		Min = 1,
+		Max = 1000,
+		Default = 1000,
+		Suffix = function(val) return val == 1 and 'stud' or 'studs' end,
+	})
+
+	local methods = { 'Distance', 'Health' }
+	for i, _ in pairs(sortmethods) do
+		if not tableFind(methods, i) then
+			table.insert(methods, i)
+		end
+	end
+
+	Sort = AutoVulcan:CreateDropdown({
+		Name = 'Target mode',
+		List = methods,
+		Default = 'Distance',
+	})
+
+	Prediction = AutoVulcan:CreateToggle({
+		Name = 'Prediction',
+		Default = true,
+		Tooltip = 'Predicts target movement.',
+	})
+end)
+			run(function()
+    local AutoPickpocket
+    local Targets
+    local Range
+    
+    AutoPickpocket = vape.Categories.Kits:CreateModule({
+        Name = 'Auto Pickpocket',
+        Function = function(callback)
+            if callback then
+                repeat
+                    if entitylib.isAlive and store.equippedKit == 'mimic' then
+                        local localPosition = entitylib.character.RootPart.Position
+                        local plrs = entitylib.AllPosition({
+                            Range = Range.Value,
+                            Origin = localPosition,
+                            Wallcheck = Targets.Walls.Enabled or nil,
+                            Part = 'RootPart',
+                            Players = true,
+                            Sort = sortmethods.Distance
+                        })
+                        for _, v in plrs do
+                            if bedwars.Client:Get('MimicBlockPickPocketPlayer'):CallServer(v.Player) then
+                                bedwars.SoundManager:playSound(bedwars.SoundList[({bedwars.SoundList.MIMIC_PICKPOCKET_1, bedwars.SoundList.MIMIC_PICKPOCKET_2, bedwars.SoundList.MIMIC_PICKPOCKET_3})[math.random(1, 3)]], {
+                                    playbackSpeedMultiplier = 1.27,
+                                    position = localPosition
+                                })
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                until not AutoPickpocket.Enabled
+            end
+        end,
+        Tooltip = 'Automatically pickpockets with milo kit.'
+    })
+    
+    Targets = AutoPickpocket:CreateTargets({Players = true, Walls = true})
+    Range = AutoPickpocket:CreateSlider({
+        Name = 'Range',
+        Min = 1,
+        Max = 30,
+        Default = 25,
+        Suffix = function(val)
+            return val <= 1 and 'stud' or 'studs'
+        end
+    })
+end)
+																																																																												
+run(function()
+    local InfiniteShield
+    
+    InfiniteShield = vape.Categories.Blatant:CreateModule({
+        Name = 'Infinite Shield',
+        Function = function(callback)
+            if callback then
+                repeat
+                    bedwars.Client:Get('PlayerEatCake'):SendToServer({block = replicatedStorage.Items.cake_one})
+                    task.wait(0.1)
+                until not InfiniteShield.Enabled
+            end
+        end,
+        Tooltip = 'Gives you +10 shield infinitely'
+    })
+end)
+
+																																																																													run(function()
+    local TerraAimbot
+    local Range
+    local Mode
+    
+    local old
+    
+    TerraAimbot = vape.Categories.Blatant:CreateModule({
+        Name = 'Terra Aimbot',
+        Function = function(callback)
+            if callback then
+                old = bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition
+                bedwars.BlockKickerKitController.getKickBlockProjectileOriginPosition = function(...)
+                    local origin, dir = select(2, ...)
+                    local plr = entitylib['Entity'.. Mode.Value]({
+                        Part = 'RootPart',
+                        Range = Range.Value,
+                        Origin = origin,
+                        Players = true,
+                        Wallcheck = true
+                    })
+    
+                    if plr then
+                        local calc = prediction.SolveTrajectory(origin, 100, 20, plr.RootPart.Position, plr.RootPart.Velocity, workspace.Gravity, plr.HipHeight, plr.Jumping and 42.6 or nil)
+    
+                        if calc then
+                            for i, v in debug.getstack(2) do
+                                if v == dir then
+                                    debug.setstack(2, i, CFrame.lookAt(origin, calc).LookVector)
+                                end
+                            end
+                        end
+                    end
+    
+                    return old(...)
+                end
+            end
+        end,
+        Tooltip = 'Silently adjusts where terra blocks are heading towards.'
+    })
+    
+    Mode = TerraAimbot:CreateDropdown({
+        Name = 'Mode',
+        List = {'Position', 'Mouse'},
+        Default = 'Mouse'
+    })
+    Range = TerraAimbot:CreateSlider({
+        Name = 'Range',
+        Min = 1,
+        Max = 1000,
+        Default = 1000,
+        Suffix = function(val)
+            return val <= 1 and 'studs' or 'stud'
+        end
+    })
+end)
 run(function()
     local AutoVanessa
     local oldGetChargeTime
