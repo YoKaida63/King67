@@ -4773,14 +4773,12 @@ run(function()
 end)
 	
 run(function()
-    local Mode
     local Expand
     local AutoToggle
     local Visible
     local VisibleColor
     local Targets
-    local objects = {}
-    local set = false
+    local objects, set = {}, {}
     local hitboxesActive = false
     local autoToggleConnection = nil
     local autoToggleFrameCounter = 0
@@ -4813,7 +4811,6 @@ run(function()
     local function isTargetBehindWall(ent)
         if not Targets or not Targets.Walls or not Targets.Walls.Enabled then return false end
         if not ent.RootPart then return false end
-        if not entitylib.isAlive or not entitylib.character or not entitylib.character.RootPart then return false end
         local origin = entitylib.character.RootPart.Position
         local target = ent.RootPart.Position
         local direction = target - origin
@@ -4854,11 +4851,6 @@ run(function()
         weld.Part0 = hitbox
         weld.Part1 = ent.RootPart
         weld.Parent = hitbox
-        local ev = Instance.new('ObjectValue')
-        ev.Name = 'EntityValue'
-        ev.Value = ent.Character
-        ev.Parent = hitbox
-        game:GetService('CollectionService'):AddTag(hitbox, 'Hitbox')
         objects[ent] = hitbox
     end
 
@@ -4875,9 +4867,17 @@ run(function()
         end
     end
 
+    local function swordModeEnabled()
+        return SwordMode and SwordMode.Enabled
+    end
+
+    local function playerModeEnabled()
+        return PlayerMode and PlayerMode.Enabled
+    end
+
     local function handleAutoToggle()
         if not AutoToggle or not AutoToggle.Enabled then return end
-        if not HitBoxes.Enabled or Mode.Value ~= 'Player' then return end
+        if not HitBoxes.Enabled or not playerModeEnabled() then return end
         local holdingSword = isSword()
         if holdingSword and not hitboxesActive then
             hitboxesActive = true
@@ -4889,14 +4889,19 @@ run(function()
     end
 
     HitBoxes = vape.Categories.Blatant:CreateModule({
-        Name = 'HitBoxes',
+        Name = 'King HitBoxes',
         Function = function(callback)
             if callback then
                 updateExpandSize(Expand.Value)
-                if Mode.Value == 'Sword' then
+
+                -- Sword mode
+                if swordModeEnabled() then
                     debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (Expand.Value / 3))
                     set = true
-                else
+                end
+
+                -- Player mode
+                if playerModeEnabled() then
                     HitBoxes:Clean(entitylib.Events.EntityAdded:Connect(function(ent)
                         if AutoToggle and AutoToggle.Enabled then
                             if hitboxesActive then createHitbox(ent) end
@@ -4910,16 +4915,6 @@ run(function()
                     end))
                     if AutoToggle and AutoToggle.Enabled then
                         handleAutoToggle()
-                        if not autoToggleConnection or not autoToggleConnection.Connected then
-                            autoToggleFrameCounter = 0
-                            autoToggleConnection = runService.Heartbeat:Connect(function()
-                                autoToggleFrameCounter = autoToggleFrameCounter + 1
-                                if autoToggleFrameCounter % 5 == 0 then
-                                    handleAutoToggle()
-                                end
-                            end)
-                            HitBoxes:Clean(autoToggleConnection)
-                        end
                     else
                         refreshAllHitboxes()
                     end
@@ -4951,12 +4946,12 @@ run(function()
                 hitboxesActive = false
                 if set then
                     debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, 3.8)
-                    set = false
+                    set = nil
                 end
                 clearHitboxes()
             end
         end,
-        Tooltip = 'increases attack hitbox'
+        Tooltip = 'Expands attack hitbox'
     })
 
     Targets = HitBoxes:CreateTargets({
@@ -4964,7 +4959,7 @@ run(function()
         Walls = false,
         NPCs = false,
         Function = function()
-            if HitBoxes.Enabled and Mode.Value == 'Player' then
+            if HitBoxes.Enabled and playerModeEnabled() then
                 if AutoToggle and AutoToggle.Enabled then
                     if hitboxesActive then refreshAllHitboxes() end
                 else
@@ -4974,16 +4969,39 @@ run(function()
         end
     })
 
-    Mode = HitBoxes:CreateDropdown({
-        Name = 'Mode',
-        List = {'Sword', 'Player'},
-        Function = function(val)
-            local isPlayer = val == 'Player'
-            if AutoToggle then AutoToggle.Object.Visible = isPlayer end
-            if Visible then Visible.Object.Visible = isPlayer end
-            if VisibleColor then VisibleColor.Object.Visible = isPlayer and Visible.Enabled end
-            if HitBoxes.Enabled then HitBoxes:Toggle() HitBoxes:Toggle() end
-        end,
+    SwordMode = HitBoxes:CreateToggle({
+        Name = 'Sword Mode',
+        Default = true,
+        Tooltip = 'Increases the sword swing range around you',
+        Function = function(callback)
+            if HitBoxes.Enabled then
+                if callback then
+                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (Expand.Value / 3))
+                    set = true
+                else
+                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, 3.8)
+                    set = nil
+                end
+            end
+        end
+    })
+
+    PlayerMode = HitBoxes:CreateToggle({
+        Name = 'Player Mode',
+        Default = true,
+        Tooltip = 'Increases the players hitbox size',
+        Function = function(callback)
+            if AutoToggle then AutoToggle.Object.Visible = callback end
+            if Visible then Visible.Object.Visible = callback end
+            if VisibleColor then VisibleColor.Object.Visible = callback and Visible and Visible.Enabled end
+            if HitBoxes.Enabled then
+                if callback then
+                    refreshAllHitboxes()
+                else
+                    clearHitboxes()
+                end
+            end
+        end
     })
 
     Expand = HitBoxes:CreateSlider({
@@ -4995,9 +5013,10 @@ run(function()
         Function = function(val)
             updateExpandSize(val)
             if HitBoxes.Enabled then
-                if Mode.Value == 'Sword' then
+                if swordModeEnabled() then
                     debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (val / 3))
-                else
+                end
+                if playerModeEnabled() then
                     for _, part in pairs(objects) do part.Size = cachedExpandSize end
                 end
             end
@@ -5010,7 +5029,7 @@ run(function()
     AutoToggle = HitBoxes:CreateToggle({
         Name = 'Auto Toggle',
         Default = false,
-        Tooltip = 'enables hitbox when holding sword, disable when not',
+        Tooltip = 'Automatically enables hitbox when holding a sword',
         Function = function(callback)
             if callback then
                 if autoToggleConnection then autoToggleConnection:Disconnect() end
@@ -5030,7 +5049,7 @@ run(function()
                     autoToggleConnection = nil
                 end
                 hitboxesActive = false
-                if HitBoxes.Enabled and Mode.Value == 'Player' then
+                if HitBoxes.Enabled and playerModeEnabled() then
                     refreshAllHitboxes()
                 end
             end
@@ -5040,9 +5059,10 @@ run(function()
     Visible = HitBoxes:CreateToggle({
         Name = 'Visible',
         Default = false,
+        Tooltip = 'Makes the hitbox visible on screen',
         Function = function(callback)
             if VisibleColor then VisibleColor.Object.Visible = callback end
-            if HitBoxes.Enabled and Mode.Value == 'Player' then
+            if HitBoxes.Enabled and playerModeEnabled() then
                 local transparency = callback and 0.5 or 1
                 local col = callback and VisibleColor and (colorList[VisibleColor.Value] or colorList.Red) or nil
                 for _, part in pairs(objects) do
@@ -5058,8 +5078,9 @@ run(function()
         List = {'Red', 'Blue', 'Green', 'Yellow', 'Orange', 'Purple', 'White', 'Cyan', 'Pink', 'Black'},
         Default = 'Red',
         Visible = false,
+        Tooltip = 'Color of the visible hitbox',
         Function = function(val)
-            if HitBoxes.Enabled and Mode.Value == 'Player' and Visible.Enabled then
+            if HitBoxes.Enabled and playerModeEnabled() and Visible.Enabled then
                 local col = colorList[val] or colorList.Red
                 for _, part in pairs(objects) do part.Color = col end
             end
@@ -5067,10 +5088,9 @@ run(function()
     })
 
     task.spawn(function()
-        repeat task.wait() until Mode and Mode.Value
-        local isPlayer = Mode.Value == 'Player'
-        AutoToggle.Object.Visible = isPlayer
-        Visible.Object.Visible = isPlayer
+        repeat task.wait() until SwordMode and PlayerMode
+        if AutoToggle then AutoToggle.Object.Visible = true end
+        if Visible then Visible.Object.Visible = true end
     end)
 
     task.defer(function()
@@ -5079,6 +5099,7 @@ run(function()
         end
     end)
 end)
+	
 	
 run(function()
 	vape.Categories.Blatant:CreateModule({
