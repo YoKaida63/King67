@@ -17279,6 +17279,7 @@ run(function()
 		end
 	})
 end)
+						--cv breaker
 						run(function()
     local Breaker
     local Mode
@@ -17461,7 +17462,7 @@ end)
     end
     
     Breaker = vape.Categories.Minigames:CreateModule({
-        Name = 'CC Breaker',
+        Name = 'Breaker',
         Function = function(callback)
             if callback then
                 for _ = 1, 30 do
@@ -17640,7 +17641,6 @@ end)
         Tooltip = 'Only breaks when tools are held'
     })
 end)
-
 	
 run(function()
 	local KillEffect
