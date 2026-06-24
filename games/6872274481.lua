@@ -21409,291 +21409,173 @@ run(function()
 end)
 
 run(function()
-	local AutoPearl
-	local LimitItems
-	local HandCheck
-
-	local rayCheck = cloneRaycast()
-	rayCheck.RespectCanCollide = true
-
-	local scanParams = cloneRaycast()
-	scanParams.RespectCanCollide = true
-	scanParams.FilterType = Enum.RaycastFilterType.Exclude
-	
-	local projectileRemote = {InvokeServer = function() end}
-	task.spawn(function()
-		projectileRemote = bedwars.Client:Get(remotes.FireProjectile).instance
-	end)
-
-	local function isHoldingPearl()
-		if not entitylib.isAlive then return false end
-		local hand = store.inventory and store.inventory.inventory and store.inventory.inventory.hand
-		return hand and hand.itemType == 'telepearl'
-	end
-
-	local function getPearlHotbarSlot()
-		for i, v in store.inventory.hotbar do
-			if v.item and v.item.itemType == 'telepearl' then
-				return i - 1, v.item
-			end
-		end
-		return nil, nil
-	end
-
-	local function throwPearl(pos, spot, pearlTool)
-		local meta = bedwars.ProjectileMeta.telepearl
-		local offsets = {
-			Vector3.new(0, 0, 0),
-			Vector3.new(0, 0.5, 0),
-		}
-
-		local calc, usedSpot
-		for _, offset in offsets do
-			local trySpot = spot + offset
-			calc = prediction.SolveTrajectory(
-				pos,
-				meta.launchVelocity,
-				meta.gravitationalAcceleration,
-				trySpot,
-				Vector3.zero,
-				workspace.Gravity,
-				0, 0, nil, false,
-				lplr:GetNetworkPing()
-			)
-			local targetRoot = plr.RootPart
-						if targetRoot then
-							local targetRootVel = targetRoot.AssemblyLinearVelocity or targetRoot.Velocity or Vector3.zero
-							local targetMovingUp = targetRootVel.Y > 3
-							local heightDiff = aimTarget.Y - newlook.p.Y
-							if targetMovingUp then
-								aimTarget = aimTarget + Vector3.new(0, math.clamp(targetRootVel.Y * 0.08, 0.5, 3.5), 0)
-							elseif heightDiff < -4 then
-								aimTarget = aimTarget + Vector3.new(0, math.clamp(math.abs(heightDiff) * 0.07, 0.5, 4.5), 0)
-							end
-						end
-						if calc then
-				usedSpot = trySpot
-				break
-			end
-		end
-
-		if not calc then return false end
-
-		local dir = CFrame.lookAt(pos, calc).LookVector * meta.launchVelocity
-		projectileRemote:InvokeServer(
-			pearlTool,
-			'telepearl', 'telepearl',
-			pos, pos, dir,
-			httpService:GenerateGUID(true),
-			{drawDurationSeconds = 1, shotId = httpService:GenerateGUID(false)},
-			workspace:GetServerTimeNow() - 0.045
-		)
-		return true
-	end
-
-	local function isValidLandingSpot(pos, scanP)
-		local headCheck = workspace:Raycast(pos + Vector3.new(0, 0.1, 0), Vector3.new(0, 3, 0), scanP)
-		if headCheck then return false end
-		local groundCheck = workspace:Raycast(pos + Vector3.new(0, 0.5, 0), Vector3.new(0, -2, 0), scanP)
-		return groundCheck ~= nil
-	end
-
-	local function findBestLandingSpot(origin)
-		local char = lplr.Character
-		if not char then return nil end
-
-		scanParams.FilterDescendantsInstances = {char, gameCamera}
-
-		local meta = bedwars.ProjectileMeta.telepearl
-		local candidates = {}
-
-		local distances = {4, 6, 8, 10, 12, 16, 20, 24, 30}
-		local angleSteps = 32
-
-		for _, dist in distances do
-			for step = 0, angleSteps - 1 do
-				local angle = (step / angleSteps) * math.pi * 2
-				local offsetX = math.cos(angle) * dist
-				local offsetZ = math.sin(angle) * dist
-
-				local checkOrigin = Vector3.new(
-					origin.X + offsetX,
-					origin.Y + 50,
-					origin.Z + offsetZ
-				)
-
-				local downRay = workspace:Raycast(checkOrigin, Vector3.new(0, -120, 0), scanParams)
-				if downRay then
-					local hitPos = downRay.Position
-					local normal = downRay.Normal
-					local block = downRay.Instance
-
-					if normal.Y > 0.7 and block and block:IsA("BasePart") then
-						local blockTop = block.Position.Y + (block.Size.Y / 2)
-						local landingSpot = Vector3.new(hitPos.X, blockTop + 0.1, hitPos.Z)
-
-						if isValidLandingSpot(landingSpot, scanParams) then
-							local calc = prediction.SolveTrajectory(
-								origin,
-								meta.launchVelocity,
-								meta.gravitationalAcceleration,
-								landingSpot,
-								Vector3.zero,
-								workspace.Gravity,
-								0, 0, nil, false,
-								lplr:GetNetworkPing()
-							)
-
-							local targetRoot = plr.RootPart
-						if targetRoot then
-							local targetRootVel = targetRoot.AssemblyLinearVelocity or targetRoot.Velocity or Vector3.zero
-							local targetMovingUp = targetRootVel.Y > 3
-							local heightDiff = aimTarget.Y - newlook.p.Y
-							if targetMovingUp then
-								aimTarget = aimTarget + Vector3.new(0, math.clamp(targetRootVel.Y * 0.08, 0.5, 3.5), 0)
-							elseif heightDiff < -8 then
-								aimTarget = aimTarget + Vector3.new(0, math.clamp(math.abs(heightDiff) * 0.04, 0.3, 2.5), 0)
-							end
-						end
-						if calc then
-								local dist2d = Vector2.new(origin.X - landingSpot.X, origin.Z - landingSpot.Z).Magnitude
-								local heightDiff = landingSpot.Y - origin.Y
-								table.insert(candidates, {
-									spot = landingSpot,
-									dist = dist2d,
-									heightDiff = heightDiff,
-									calc = calc
-								})
-							end
-						end
-					end
-				end
-			end
-		end
-
-		if #candidates == 0 then return nil end
-		table.sort(candidates, function(a, b)
-			local aAbove = a.heightDiff >= -10
-			local bAbove = b.heightDiff >= -10
-			if aAbove ~= bAbove then return aAbove end
-			return a.dist < b.dist
-		end)
-
-		return candidates[1].spot
-	end
-
-	local function doPearl(pos, spot, pearl)
-		local pearlSlot, pearlItem = getPearlHotbarSlot()
-		if not pearlSlot or not pearlItem then return end
-
-		if LimitItems.Enabled then
-			if not isHoldingPearl() then return end
-			throwPearl(pos, spot, pearlItem.tool)
-			return
-		end
-
-		local originalSlot = store.inventory.hotbarSlot
-
-		if isHoldingPearl() then
-			throwPearl(pos, spot, pearlItem.tool)
-		else
-			hotbarSwitch(pearlSlot)
-			task.wait(0.08)
-			throwPearl(pos, spot, pearlItem.tool)
-			task.wait(0.05)
-			hotbarSwitch(originalSlot)
-		end
-	end
-
-	AutoPearl = vape.Categories.Utility:CreateModule({
-		Name = 'AutoPearl',
-		Function = function(callback)
-			if callback then
-				local lastThrowTime = 0
-				local throwCooldown = 3
-				local pearlTriggered = false
-				local pearlCountAtFallStart = nil
-				local manualThrowTime = nil
-				local fallInVoidStart = nil
-				local lastScanTime = 0
-
-				local voidRayParams = RaycastParams.new()
-				voidRayParams.FilterType = Enum.RaycastFilterType.Blacklist
-				voidRayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
-
-				repeat
-					if entitylib.isAlive then
-						local root = entitylib.character.RootPart
-						local pearl = getItem('telepearl')
-						local currentTime = tick()
-
-						local velY = root.AssemblyLinearVelocity.Y
-						local falling = velY < -60
-						local isJumping = velY > 5
-						local noGroundBelow = not workspace:Raycast(root.Position, Vector3.new(0, -120, 0), voidRayParams)
-
-						if not falling then
-							pearlCountAtFallStart = nil
-							manualThrowTime = nil
-						elseif falling and pearlCountAtFallStart == nil then
-							pearlCountAtFallStart = pearl and pearl.amount or 0
-						end
-
-						local currentPearlCount = pearl and pearl.amount or 0
-						if pearlCountAtFallStart ~= nil and currentPearlCount < pearlCountAtFallStart and not pearlTriggered then
-							manualThrowTime = currentTime
-							pearlCountAtFallStart = currentPearlCount
-						end
-
-						local blockedByManual = manualThrowTime and (currentTime - manualThrowTime) < 3
-
-						if falling and noGroundBelow then
-							if not fallInVoidStart then
-								fallInVoidStart = currentTime
-							end
-						else
-							fallInVoidStart = nil
-						end
-						local fallInVoidDuration = fallInVoidStart and (currentTime - fallInVoidStart) or 0
-
-						if pearl and falling and noGroundBelow and not isJumping and not blockedByManual and fallInVoidDuration >= 0.6 and not (HandCheck.Enabled and isHoldingPearl()) then
-							if not pearlTriggered and (currentTime - lastThrowTime) >= throwCooldown then
-								pearlTriggered = true
-								lastThrowTime = currentTime
-								if currentTime - lastScanTime >= 0.5 then
-									lastScanTime = currentTime
-									local ground = findBestLandingSpot(root.Position)
-									if ground then
-										task.spawn(doPearl, root.Position, ground, pearl)
-									end
-								end
-							end
-						else
-							pearlTriggered = false
-						end
-					else
-						pearlTriggered = false
-					end
-					task.wait(0.05)
-				until not AutoPearl.Enabled
-			end
-		end,
-		Tooltip = 'automatically pearls to safety when falling into void'
-	})
-
-	LimitItems = AutoPearl:CreateToggle({
-		Name = 'Limit to Pearl',
-		Default = false,
-		Tooltip = 'only pearls when already holding pearl, no switching'
-	})
-
-	HandCheck = AutoPearl:CreateToggle({
-		Name = 'Hand Check',
-		Default = false,
-		Tooltip = 'disables auto pearl while holding a pearl'
-	})
+    local AutoPearl
+    local Legit
+    local Back
+    local Check
+    local LandCheck
+    local BackDelay
+    local Limit
+    
+    local rayCheck = RaycastParams.new()
+    rayCheck.RespectCanCollide = true
+    rayCheck.FilterType = Enum.RaycastFilterType.Include
+    local projectileRemote = {InvokeServer = function(self, ...) end}
+    task.spawn(function()
+    	projectileRemote = bedwars.Client:Get(remotes.FireProjectile).instance
+    end)
+    
+    local function firePearl(pos, spot, item)
+    	if Check.Enabled then
+    		for _, v in store.selfProjectiles do
+    			if v.Name == 'telepearl' then
+    				return
+    			end
+    		end
+    	end
+    	local hotbar, old = getHotbar(item.tool), store.hand
+    
+    	switchItem(item.tool)
+    	if Legit.Enabled and hotbar then
+    		hotbarSwitch(hotbar)
+    	end
+    
+    	local meta = bedwars.ProjectileMeta.telepearl
+    	local calc = prediction.SolveTrajectory(pos, meta.launchVelocity, meta.gravitationalAcceleration, spot, Vector3.zero, workspace.Gravity, 0, 0)
+    	local landed = false
+    
+    	if calc then
+    		local dir = CFrame.lookAt(pos, calc).LookVector * meta.launchVelocity
+    		local projectile = bedwars.ProjectileController:createLocalProjectile(meta, 'telepearl', 'telepearl', pos, nil, dir, {drawDurationSeconds = 1})
+    		local res = projectileRemote:InvokeServer(
+    			item.tool,
+    			'telepearl',
+    			'telepearl',
+    			pos,
+    			pos,
+    			dir,
+    			httpService:GenerateGUID(true),
+    			{ 
+                    drawDurationSeconds = 1, 
+                    shotId = httpService:GenerateGUID(false) 
+                },
+    			workspace:GetServerTimeNow() - 0.045
+    		)
+    		task.spawn(function()
+    			repeat
+    				task.wait()
+    			until not projectile or not projectile.Parent
+    			landed = true
+    		end)
+    		if res then
+    			pcall(function()
+    				res.Parent = replicatedStorage
+    			end)
+    		end
+    	end
+    
+    	if Back.Enabled and LandCheck.Enabled then
+    		repeat
+    			task.wait()
+    		until landed
+    	end
+    	if Back.Enabled and old and old.tool then
+    		task.wait(BackDelay:GetRandomValue())
+    		switchItem(old.tool)
+    		if Legit.Enabled and getHotbar(old.tool) then
+    			hotbarSwitch(getHotbar(old.tool))
+    		end
+    	end
+    end
+    
+    local function findNearGround(origin)
+    	for _, v in {Vector3.new(1, 0, 0), Vector3.new(0, 0, 1), Vector3.new(-1, 0, 0), Vector3.new(0, 0, -1)} do
+    		for i = 1, 24 do
+    			local ray = workspace:Raycast((origin.Position + (Vector3.yAxis * 3)) + (v * i), Vector3.new(0, -60, 0), rayCheck)
+    			if ray then
+    				return ray.Position
+    			end
+    		end
+    	end
+    	return nil
+    end
+    
+    AutoPearl = vape.Categories.Utility:CreateModule({
+    	Name = 'Auto Pearl',
+    	Function = function(callback)
+    		if callback then
+    			local check, lasty
+    			repeat
+    				if entitylib.isAlive and (not Limit.Enabled or store.hand.tool and store.hand.tool.Name == 'telepearl') then
+    					local root = entitylib.character.RootPart
+    					local pearl = getItem('telepearl')
+    					rayCheck.FilterDescendantsInstances = {store.map}
+    					rayCheck.CollisionGroup = root.CollisionGroup
+    
+    					if entitylib.character.Humanoid.FloorMaterial ~= Enum.Material.Air then
+    						lasty = root.CFrame
+    					end
+    
+    					if pearl and root.Velocity.Y < -100 and not workspace:Raycast(root.Position, Vector3.new(0, -200, 0), rayCheck) then
+    						if not check then
+    							check = true
+    							local ground = findNearGround(root.CFrame + Vector3.new(0, 40, 0)) or findNearGround(lasty and lasty + Vector3.new(0, 5, 0) or root.CFrame)
+    							if ground then
+    								firePearl(root.Position, ground, pearl)
+    							end
+    						end
+    					else
+    						check = false
+    					end
+    				end
+    				task.wait(0.1)
+    			until not AutoPearl.Enabled
+    		end
+    	end,
+    	Tooltip = 'Automatically throws a pearl onto nearby ground after\nfalling a certain distance.'
+    })
+    
+    Legit = AutoPearl:CreateToggle({
+    	Name = 'Legit Switch',
+    	Tooltip = 'Visualizes the switching clientside',
+    	Default = true
+    })
+    Back = AutoPearl:CreateToggle({
+    	Name = 'Switch back',
+    	Default = true,
+    	Function = function(callback)
+    		if BackDelay then
+    			BackDelay.Object.Visible = callback
+    		end
+    		if LandCheck then
+    			LandCheck.Object.Visible = callback
+    		end
+    	end,
+    	Tooltip = 'Switches back to the last slot before pearl'
+    })
+    LandCheck = AutoPearl:CreateToggle({
+    	Name = 'Only after landed',
+    	Tooltip = 'Only switches back after your pearl landed',
+    	Darker = true
+    })
+    Check = AutoPearl:CreateToggle({
+    	Name = 'Pearl check',
+    	Tooltip = 'Doesn\'t throw a pearl if ur already pearling',
+    	Default = true
+    })
+    BackDelay = AutoPearl:CreateTwoSlider({
+    	Name = 'Switch Back Delay',
+    	Min = 0,
+    	Max = 2,
+    	DefaultMin = 0.1,
+    	DefaultMax = 0.2,
+    	Darker = true
+    })
+    Limit = AutoPearl:CreateToggle({
+    	Name = 'Limit to item',
+    	Tooltip = 'Only throws pearl when holding a pearl'
+    })
 end)
-
 run(function()
 	local NoFall
 	local NoFallMethod
