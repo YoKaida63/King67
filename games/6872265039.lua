@@ -196,6 +196,7 @@ run(function()
 		Tooltip = 'Automatically opens lucky crates, piston inspired!'
 	})
 end)
+		v
 	
 run(function()
     local ok, err = pcall(function()
@@ -947,6 +948,102 @@ run(function()
 		end
 	})
 end)
+																run(function()
+    local LARPKits
+    local KITS_TO_OWN = {}
+    local active = false
+    local connection = nil
+
+    local function getKitName(btn)
+        local tag = btn:FindFirstChild("KitNameTag")
+        if not tag then return nil end
+        local lbl = tag:FindFirstChild("5") or tag:FindFirstChild("4")
+        if lbl and lbl:IsA("TextLabel") then
+            return lbl.Text
+        end
+        return nil
+    end
+
+    local function moveOwnedKits(notOwned, owned)
+        if not notOwned or not owned then return 0 end
+        local moved = 0
+        for _, btn in ipairs(notOwned:GetChildren()) do
+            if btn:IsA("ImageButton") then
+                local name = getKitName(btn)
+                if name then
+                    for _, wantedKit in ipairs(KITS_TO_OWN) do
+                        if string.lower(name) == string.lower(wantedKit) then
+                            btn.Parent = owned
+                            moved = moved + 1
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        return moved
+    end
+
+    local function applyKits()
+        local pg = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
+        if not pg then return end
+        local app = pg:FindFirstChild("KitShopApp")
+        if not app then return end
+        local list = app:FindFirstChild("LobbyKitShopItemList", true)
+        if not list then return end
+        local notOwned = list:FindFirstChild("NotUnlockedKits")
+        local owned = list:FindFirstChild("UnlockedKits")
+        if notOwned and owned then
+            moveOwnedKits(notOwned, owned)
+        end
+    end
+
+    local function startAutoMove()
+        if connection then return end
+        connection = game:GetService("RunService").Stepped:Connect(function()
+            if not active then return end
+            applyKits()
+        end)
+    end
+
+    local function stopAutoMove()
+        if connection then
+            connection:Disconnect()
+            connection = nil
+        end
+    end
+
+    LARPKits = vape.Categories.Minigames:CreateModule({
+        Name = "LARPKits",
+        Tooltip = "do u own it or not !!! (client-sided)",
+        Function = function(callback)
+            active = callback
+            if callback then
+                startAutoMove()
+                applyKits() 
+            else
+                stopAutoMove()
+            end
+        end
+    })
+
+    LARPKits:CreateTextList({
+        Name = "Kits To Own",
+        Placeholder = "Type kit names here e.g. Ragnar",
+        Function = function(list)
+            KITS_TO_OWN = {}
+            for _, name in ipairs(list) do
+                if name and name ~= "" then
+                    table.insert(KITS_TO_OWN, name)
+                end
+            end
+            if active then
+                applyKits()
+            end
+        end
+    })
+end)
+
 
 run(function()
 	local NametagSpoof
