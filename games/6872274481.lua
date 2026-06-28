@@ -5614,6 +5614,74 @@ run(function()
 		Tooltip = 'Makes all modules work faster - KillAura attacks faster, ESP updates faster, etc.'
 	})
 end)
+run(function()
+	local AutoBed
+	local BedRange
+	local BedSpeed
+
+	AutoBed = vape.Categories.Blatant:CreateModule({
+		Name = 'AutoBed',
+		Tooltip = 'Automatically breaks enemy beds near you. Walk up to the bed and it breaks it instantly.',
+		Function = function(callback)
+			if callback then
+				task.spawn(function()
+					repeat
+						if entitylib.isAlive then
+							local root = lplr.Character and lplr.Character:FindFirstChild('HumanoidRootPart')
+							if root then
+								for _, obj in workspace:GetDescendants() do
+									if obj.Name == 'bed' and obj:IsA('BasePart') then
+										local dist = (obj.Position - root.Position).Magnitude
+										if dist <= BedRange.Value then
+											-- Check it's not our own bed
+											local mapCFrames = workspace:FindFirstChild('MapCFrames')
+											local myTeam = lplr.Character and lplr.Character:GetAttribute('Team')
+											local isOwnBed = false
+											if mapCFrames and myTeam then
+												local myBedObj = mapCFrames:FindFirstChild(tostring(myTeam) .. '_bed')
+												if myBedObj and (myBedObj.Value.Position - obj.Position).Magnitude < 3 then
+													isOwnBed = true
+												end
+											end
+											if not isOwnBed then
+												-- Use the Breaker module if available
+												if vape.Modules.Breaker and vape.Modules.Breaker.Enabled then
+													-- Breaker handles it automatically
+												else
+													-- Manual break attempt
+													pcall(function()
+														bedwars.Client:Get(remotes.BreakBed or 'BreakBed'):SendToServer({ bed = obj })
+													end)
+												end
+											end
+										end
+									end
+								end
+							end
+						end
+						task.wait(BedSpeed.Value)
+					until not AutoBed.Enabled
+				end)
+			end
+		end
+	})
+	BedRange = AutoBed:CreateSlider({
+		Name = 'Range',
+		Min = 1,
+		Max = 30,
+		Default = 8,
+		Suffix = function(v) return v == 1 and 'stud' or 'studs' end
+	})
+	BedSpeed = AutoBed:CreateSlider({
+		Name = 'Check Speed',
+		Min = 0.05,
+		Max = 1,
+		Default = 0.1,
+		Decimal = 100,
+		Suffix = 's'
+	})
+end)
+
 
 -- King killaura 
 local Attacking
