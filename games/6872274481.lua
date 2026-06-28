@@ -22711,7 +22711,124 @@ end)
 		Tooltip = 'Maximum FPS optimization - All features remain functional'
 	})
 end)
-
+run(function()
+	local GameOptimizer
+	local originalFFlags = {}
+	
+	local function saveFFlagstate()
+		local flags = {
+			"FFlagDebugRunParallelLuaOnMainThread",
+			"FIntTaskSchedulerTargetFps",
+			"FFlagTaskSchedulerLimitTargetFpsTo2402",
+			"DFFlagTaskSchedulerLimitTargetFpsTo2402",
+			"FFlagDebugCheckRobloxEventTime",
+			"DFIntTaskSchedulerTargetFps",
+			"FFlagEnableLoadableAnimationForMeshPartCage",
+			"DFIntS2PhysicsSenderRate",
+			"FIntDefaultMeshCacheSizeMB",
+			"DFIntDefaultMeshCacheSizeMB",
+		}
+		
+		for _, flag in ipairs(flags) do
+			pcall(function()
+				originalFFlags[flag] = getfflag(flag)
+			end)
+		end
+	end
+	
+	local function applyGameOptimizations()
+		saveFFlagstate()
+		
+		-- Enable multithreading
+		pcall(function()
+			setfflag("FFlagDebugRunParallelLuaOnMainThread", "false")
+		end)
+		
+		-- Increase target FPS
+		pcall(function()
+			setfflag("FIntTaskSchedulerTargetFps", "240")
+			setfflag("DFIntTaskSchedulerTargetFps", "240")
+			setfflag("FFlagTaskSchedulerLimitTargetFpsTo2402", "false")
+			setfflag("DFFlagTaskSchedulerLimitTargetFpsTo2402", "false")
+		end)
+		
+		-- Disable expensive event timing
+		pcall(function()
+			setfflag("FFlagDebugCheckRobloxEventTime", "false")
+		end)
+		
+		-- Optimize physics
+		pcall(function()
+			setfflag("DFIntS2PhysicsSenderRate", "240")
+			settings():GetService("PhysicsSettings").AllowSleep = true
+			settings():GetService("PhysicsSettings").PhysicsEnvironmentalThrottle = Enum.EnviromentalPhysicsThrottle.Always
+		end)
+		
+		-- Increase mesh cache
+		pcall(function()
+			setfflag("FIntDefaultMeshCacheSizeMB", "1024")
+			setfflag("DFIntDefaultMeshCacheSizeMB", "1024")
+		end)
+		
+		-- Optimize animations
+		pcall(function()
+			setfflag("FFlagEnableLoadableAnimationForMeshPartCage", "true")
+		end)
+		
+		-- Network optimizations
+		pcall(function()
+			setfflag("DFIntConnectionMTUSize", "1400")
+			settings():GetService("NetworkSettings").IncomingReplicationLag = 0
+			settings():GetService("NetworkSettings").HttpCacheCleanDelay = 300
+			settings():GetService("NetworkSettings").HttpCacheSize = 512
+		end)
+		
+		-- Additional QOL optimizations
+		pcall(function()
+			-- Disable telemetry
+			setfflag("FFlagDebugDisableTelemetryEphemeralCounter", "true")
+			setfflag("FFlagDebugDisableTelemetryEphemeralStat", "true")
+			setfflag("FFlagDebugDisableTelemetryEventIngest", "true")
+			setfflag("FFlagDebugDisableTelemetryPoint", "true")
+			setfflag("FFlagDebugDisableTelemetryV2Counter", "true")
+			setfflag("FFlagDebugDisableTelemetryV2Event", "true")
+			setfflag("FFlagDebugDisableTelemetryV2Stat", "true")
+			
+			-- Reduce rendering overhead
+			setfflag("FIntRenderLocalLightUpdatesMax", "4")
+			setfflag("FIntRenderLocalLightUpdatesMin", "2")
+			
+			-- Optimize culling
+			setfflag("DFIntCullFactorPixelThresholdMainViewHighQuality", "8000")
+			setfflag("DFIntCullFactorPixelThresholdMainViewLowQuality", "8000")
+		end)
+		
+		vape:CreateNotification("GameOptimizer", "Roblox engine optimized! Multithreading enabled, FPS boosted.", 6, "success")
+	end
+	
+	local function restoreGameOptimizations()
+		for flag, value in pairs(originalFFlags) do
+			pcall(function()
+				setfflag(flag, tostring(value))
+			end)
+		end
+		table.clear(originalFFlags)
+		
+		vape:CreateNotification("GameOptimizer", "Game optimizations disabled.", 3)
+	end
+	
+	GameOptimizer = vape.Categories.BoostFPS:CreateModule({
+		Name = 'GameOptimizer',
+		Function = function(callback)
+			if callback then
+				applyGameOptimizations()
+			else
+				restoreGameOptimizations()
+			end
+		end,
+		Tooltip = 'Optimizes Roblox engine itself - Enables multithreading, increases FPS cap, optimizes physics'
+	})
+end)
 	run(function()
 	local RemoveNeon = {Enabled = false}
 	local neonConnection
