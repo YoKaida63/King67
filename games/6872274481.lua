@@ -2880,6 +2880,80 @@ end)
     })
     Limit = SilentAura:CreateToggle({Name = 'Limit to items'})
 end)
+								run(function()
+	local SilentAim
+	local renderConnection = nil
+	local mouse = lplr:GetMouse()
+
+	-- Set mouse.TargetFilter to exclude the ProjectileTargeting folder so that
+	-- mouse.Hit gives us the true world target under the cursor, not the Part itself.
+	local function getMouseHitPos()
+		local pt = workspace:FindFirstChild("ProjectileTargeting")
+		-- Temporarily set TargetFilter so mouse.Hit ignores the targeting part
+		local prev = mouse.TargetFilter
+		if pt then mouse.TargetFilter = pt end
+		local pos = mouse.Hit.Position
+		mouse.TargetFilter = prev
+		return pos
+	end
+
+	-- Try to find the active projectile handler on ProjectileController.
+	-- The handler has an 'aimPoint' or 'targetPosition' field we can override.
+	local function getProjectileHandler()
+		local pc = bedwars and bedwars.ProjectileController
+		if not pc then return nil end
+		-- projectileHandler is set on the source controller, accessible via the Knit controller
+		local psc = bedwars.Knit and bedwars.Knit.Controllers and bedwars.Knit.Controllers.DefaultProjectileSourceController
+		if psc and psc.projectileHandler then
+			return psc.projectileHandler
+		end
+		-- fallback: check all source controllers
+		if pc.projectileSourceController and pc.projectileSourceController.projectileHandler then
+			return pc.projectileSourceController.projectileHandler
+		end
+		return nil
+	end
+
+	SilentAim = vape.Categories.Combat:CreateModule({
+		Name = "SilentAim",
+		Tooltip = "Visually positions the projectile targeting indicator at your mouse cursor. The projectile still fires at the aimbot target.",
+		Function = function(callback)
+			if callback then
+				renderConnection = runService.RenderStepped:Connect(function()
+					-- Primary: directly move the Part to mouse position
+					local pt = workspace:FindFirstChild("ProjectileTargeting")
+					if not pt then return end
+					local part = pt:FindFirstChild("Part")
+					if not part then return end
+
+					local mousePos = getMouseHitPos()
+
+					-- Override the part CFrame to mouse position.
+					-- We preserve the rotation the game set (it controls beam orientation).
+					local currentRot = part.CFrame - part.CFrame.Position
+					part.CFrame = CFrame.new(mousePos) * currentRot
+
+					-- Secondary: override aimPoint on the projectile handler so the beam
+					-- attachment point also reflects mouse position.
+					local handler = getProjectileHandler()
+					if handler then
+						-- handler.aimPoint is what ProjectileController uses to position the Part
+						-- overriding it makes the beam draw correctly too
+						pcall(function() handler.aimPoint = mousePos end)
+						pcall(function() handler.targetPosition = mousePos end)
+						pcall(function() handler.lockedAimPoint = nil end) -- clear any locked aim
+					end
+				end)
+			else
+				if renderConnection then
+					renderConnection:Disconnect()
+					renderConnection = nil
+				end
+			end
+		end
+	})
+end)
+
 	
 run(function()
     if isMobile then
