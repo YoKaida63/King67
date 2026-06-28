@@ -22727,6 +22727,8 @@ run(function()
 			"DFIntS2PhysicsSenderRate",
 			"FIntDefaultMeshCacheSizeMB",
 			"DFIntDefaultMeshCacheSizeMB",
+            "FLogNetwork": "7",
+            
 		}
 		
 		for _, flag in ipairs(flags) do
@@ -22743,7 +22745,9 @@ run(function()
 		pcall(function()
 			setfflag("FFlagDebugRunParallelLuaOnMainThread", "false")
 		end)
-		
+			pcall(function()
+			setfflag(""FLogNetwork": "7",", "false")
+		end)
 		-- Increase target FPS
 		pcall(function()
 			setfflag("FIntTaskSchedulerTargetFps", "240")
