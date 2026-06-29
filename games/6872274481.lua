@@ -8131,11 +8131,11 @@ run(function()
 	local CustomPrediction
 	local HorizontalMultiplier
 	local VerticalMultiplier
-	local SkyPAWorkMode
-	local SkyPAHideCursor
-	local SkyPACursorViewMode
-	local SkyPACursorLimitBow
-	local SkyPACursorShowGUI
+	local KingPAWorkMode
+	local KingPAHideCursor
+	local KingPACursorViewMode
+	local KingPACursorLimitBow
+	local KingPACursorShowGUI
 	local cursorRenderConnection
 	local lastGUIState = false
 	local rayCheck = cloneRaycast()
@@ -8230,13 +8230,13 @@ run(function()
 	end
 
 	local function shouldHideCursor()
-		if not SkyPAHideCursor or not SkyPAHideCursor.Enabled then return false end
-		if SkyPACursorShowGUI and SkyPACursorShowGUI.Enabled and isGUIOpen() then return false end
-		if SkyPACursorLimitBow and SkyPACursorLimitBow.Enabled and not hasBowEquipped() then return false end
+		if not KingPAHideCursor or not KingPAHideCursor.Enabled then return false end
+		if KingPACursorShowGUI and KingPACursorShowGUI.Enabled and isGUIOpen() then return false end
+		if KingPACursorLimitBow and KingPACursorLimitBow.Enabled and not hasBowEquipped() then return false end
 		local inFirstPerson = isFirstPerson()
-		if SkyPACursorViewMode then
-			if SkyPACursorViewMode.Value == 'First Person' then return inFirstPerson
-			elseif SkyPACursorViewMode.Value == 'Third Person' then return not inFirstPerson
+		if KingPACursorViewMode then
+			if KingPACursorViewMode.Value == 'First Person' then return inFirstPerson
+			elseif KingPACursorViewMode.Value == 'Third Person' then return not inFirstPerson
 			end
 		end
 		return true
@@ -8255,10 +8255,10 @@ run(function()
 	end
 
 	local function shouldPAWork()
-		if not SkyPAWorkMode then return true end
+		if not KingPAWorkMode then return true end
 		local inFirstPerson = isFirstPerson()
-		if SkyPAWorkMode.Value == 'First Person' then return inFirstPerson
-		elseif SkyPAWorkMode.Value == 'Third Person' then return not inFirstPerson
+		if KingPAWorkMode.Value == 'First Person' then return inFirstPerson
+		elseif KingPAWorkMode.Value == 'Third Person' then return not inFirstPerson
 		end
 		return true
 	end
@@ -8374,7 +8374,7 @@ run(function()
 				if PAFOVCircle then
 					runPAFOVCircle(PAFOVCircle.Enabled)
 				end
-				if SkyPAHideCursor and SkyPAHideCursor.Enabled and not cursorRenderConnection then
+				if KingPAHideCursor and KingPAHideCursor.Enabled and not cursorRenderConnection then
 					cursorRenderConnection = runService.RenderStepped:Connect(function()
 						checkGUIState()
 						updateCursor()
@@ -8627,7 +8627,7 @@ run(function()
 		Tooltip = 'Prioritize targets when multiple are in range'
 	})
 
-	SkyPAWorkMode = ProjectileAimbot:CreateDropdown({
+	KingPAWorkMode = ProjectileAimbot:CreateDropdown({
 		Name = 'PA Work Mode',
 		List = {'First Person', 'Third Person', 'Both'},
 		Default = 'Both',
@@ -8687,14 +8687,14 @@ run(function()
 	end
 	updateRandomizeVisibility()
 
-	SkyPAHideCursor = ProjectileAimbot:CreateToggle({
+	KingPAHideCursor = ProjectileAimbot:CreateToggle({
 		Name = 'Hide Cursor',
 		Default = false,
 		Tooltip = 'Hides the cursor while aiming',
 		Function = function(callback)
-			if SkyPACursorViewMode then SkyPACursorViewMode.Object.Visible = callback end
-			if SkyPACursorLimitBow then SkyPACursorLimitBow.Object.Visible = callback end
-			if SkyPACursorShowGUI then SkyPACursorShowGUI.Object.Visible = callback end
+			if KingPACursorViewMode then KingPACursorViewMode.Object.Visible = callback end
+			if KingPACursorLimitBow then KingPACursorLimitBow.Object.Visible = callback end
+			if KingPACursorShowGUI then KingPACursorShowGUI.Object.Visible = callback end
 			if callback and ProjectileAimbot.Enabled then
 				if not cursorRenderConnection then
 					cursorRenderConnection = runService.RenderStepped:Connect(function()
@@ -8717,38 +8717,38 @@ run(function()
 		end
 	})
 
-	SkyPACursorViewMode = ProjectileAimbot:CreateDropdown({
+	KingPACursorViewMode = ProjectileAimbot:CreateDropdown({
 		Name = 'Cursor View Mode',
 		List = {'First Person', 'Third Person', 'Both'},
 		Default = 'First Person',
 		Darker = true,
 		Visible = false,
 		Function = function()
-			if ProjectileAimbot.Enabled and SkyPAHideCursor.Enabled then
+			if ProjectileAimbot.Enabled and KingPAHideCursor.Enabled then
 				updateCursor()
 			end
 		end
 	})
 
-	SkyPACursorLimitBow = ProjectileAimbot:CreateToggle({
+	KingPACursorLimitBow = ProjectileAimbot:CreateToggle({
 		Name = 'Limit to Bow',
 		Darker = true,
 		Visible = false,
 		Tooltip = 'Only hides cursor when bow/crossbow is equipped',
 		Function = function()
-			if ProjectileAimbot.Enabled and SkyPAHideCursor.Enabled then
+			if ProjectileAimbot.Enabled and KingPAHideCursor.Enabled then
 				updateCursor()
 			end
 		end
 	})
 
-	SkyPACursorShowGUI = ProjectileAimbot:CreateToggle({
+	KingPACursorShowGUI = ProjectileAimbot:CreateToggle({
 		Name = 'Show on GUI',
 		Darker = true,
 		Visible = false,
 		Tooltip = 'Shows cursor when a GUI is open',
 		Function = function()
-			if ProjectileAimbot.Enabled and SkyPAHideCursor.Enabled then
+			if ProjectileAimbot.Enabled and KingPAHideCursor.Enabled then
 				updateCursor()
 			end
 		end
@@ -15295,7 +15295,7 @@ run(function()
 	local ChestSteal
 	local Range
 	local Open
-	local Skywars
+	local Kingwars
 	local DelayToggle
 	local DelaySlider
 	local TeamFilter
@@ -15351,7 +15351,7 @@ run(function()
 			if callback then
 				local chests = collection('chest', ChestSteal)
 				repeat task.wait() until store.queueType ~= 'bedwars_test'
-				if (not Skywars.Enabled) or store.queueType:find('skywars') then
+				if (not Kingwars.Enabled) or store.queueType:find('Kingwars') then
 					repeat
 						if entitylib.isAlive and store.matchState ~= 2 then
 							if Open.Enabled then
@@ -15385,8 +15385,8 @@ run(function()
 		end
 	})
 	Open = ChestSteal:CreateToggle({Name = 'GUI Check'})
-	Skywars = ChestSteal:CreateToggle({
-		Name = 'Only Skywars',
+	Kingwars = ChestSteal:CreateToggle({
+		Name = 'Only Kingwars',
 		Function = function()
 			if ChestSteal.Enabled then
 				ChestSteal:Toggle()
@@ -35344,7 +35344,7 @@ run(function()
 				playerData = {}
 			end
 		end,
-		Tooltip = 'script made by sky'
+		Tooltip = 'script made by King'
 	})
 
 	ChopModifier = AnimChopper:CreateSlider({
