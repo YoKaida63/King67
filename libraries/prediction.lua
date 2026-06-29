@@ -1,4 +1,7 @@
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--[[
+	Prediction Library
+	Source: https://devforum.roblox.com/t/predict-projectile-ballistics-including-gravity-and-motion/1842434
+]]
 local module = {}
 local eps = 1e-9
 local function isZero(d)
@@ -23,7 +26,7 @@ local function solveQuadric(c0, c1, c2)
 		return s0
 	elseif (D < 0) then
 		return
-	else 
+	else -- if (D > 0)
 		local sqrt_D = math.sqrt(D)
 
 		s0 = sqrt_D - p
@@ -52,16 +55,16 @@ local function solveCubic(c0, c1, c2, c3)
 	D = q * q + cb_p
 
 	if isZero(D) then
-		if isZero(q) then 
+		if isZero(q) then -- one triple solution
 			s0 = 0
 			num = 1
-		else 
+		else -- one single and one double solution
 			local u = cuberoot(-q)
 			s0 = 2 * u
 			s1 = -u
 			num = 2
 		end
-	elseif (D < 0) then 
+	elseif (D < 0) then -- Casus irreducibilis: three real solutions
 		local phi = (1 / 3) * math.acos(-q / math.sqrt(-cb_p))
 		local t = 2 * math.sqrt(-p)
 
@@ -69,7 +72,7 @@ local function solveCubic(c0, c1, c2, c3)
 		s1 = -t * math.cos(phi + math.pi / 3)
 		s2 = -t * math.cos(phi - math.pi / 3)
 		num = 3
-	else
+	else -- one real solution
 		local sqrt_D = math.sqrt(D)
 		local u = cuberoot(sqrt_D - q)
 		local v = -cuberoot(sqrt_D + q)
@@ -188,19 +191,18 @@ function module.SolveTrajectory(origin, projectileSpeed, gravity, targetPos, tar
 	local p, q, r = targetVelocity.X, targetVelocity.Y, targetVelocity.Z
 	local h, j, k = disp.X, disp.Y, disp.Z
 	local l = -.5 * gravity
-
+	--attemped gravity calculation, may return to it in the future.
 	if math.abs(q) > 0.01 and playerGravity and playerGravity > 0 then
 		local estTime = (disp.Magnitude / projectileSpeed)
 		local origq = q
+		local origj = j
 		for i = 1, 100 do
-			q = origq - (.5 * playerGravity) * estTime
+			q -= (.5 * playerGravity) * estTime
 			local velo = targetVelocity * 0.016
-			local ray = workspace:Raycast(Vector3.new(targetPos.X, targetPos.Y, targetPos.Z), 
-				Vector3.new(velo.X, (q * estTime) - playerHeight, velo.Z), params)
-			
+			local ray = workspace.Raycast(workspace, Vector3.new(targetPos.X, targetPos.Y, targetPos.Z), Vector3.new(velo.X, (q * estTime) - playerHeight, velo.Z), params)
 			if ray then
 				local newTarget = ray.Position + Vector3.new(0, playerHeight, 0)
-				estTime = estTime - math.sqrt(((targetPos - newTarget).Magnitude * 2) / playerGravity)
+				estTime -= math.sqrt(((targetPos - newTarget).Magnitude * 2) / playerGravity)
 				targetPos = newTarget
 				j = (targetPos - origin).Y
 				q = 0
@@ -218,168 +220,28 @@ function module.SolveTrajectory(origin, projectileSpeed, gravity, targetPos, tar
 		2*j*q + 2*h*p + 2*k*r,
 		j*j + h*h + k*k
 	)
-	
 	if solutions then
-		local posRoots = {}
-		for _, v in solutions do
+		local posRoots = table.create(2)
+		for _, v in solutions do --filter out the negative roots
 			if v > 0 then
 				table.insert(posRoots, v)
 			end
 		end
-		table.sort(posRoots)
 		posRoots[1] = posRoots[1]
-
 		if posRoots[1] then
 			local t = posRoots[1]
 			local d = (h + p*t)/t
 			local e = (j + q*t - l*t*t)/t
 			local f = (k + r*t)/t
-			return origin + Vector3.new(d, e, f), t
+			return origin + Vector3.new(d, e, f)
 		end
 	elseif gravity == 0 then
 		local t = (disp.Magnitude / projectileSpeed)
 		local d = (h + p*t)/t
 		local e = (j + q*t - l*t*t)/t
 		local f = (k + r*t)/t
-		return origin + Vector3.new(d, e, f), t
+		return origin + Vector3.new(d, e, f)
 	end
-	
-	return nil
-end
-
--- Euler step fallback: simulate projectile + target step by step
-function module.EulerFallback(origin, projectileSpeed, gravity, targetPos, targetVelocity, targetAccel, playerGravity, playerHeight, params)
-	local dt = 1 / 30
-	local maxSteps = 120
-	local projPos = origin
-	local projDir = (targetPos + targetVelocity * 0.3 - origin).Unit
-	local projVel = projDir * projectileSpeed
-	local tPos = targetPos
-	local tVel = targetVelocity
-	local accel = targetAccel or Vector3.zero
-	local pGrav = playerGravity or 0
-
-	for i = 1, maxSteps do
-		-- step projectile
-		projVel = projVel - Vector3.new(0, gravity * dt, 0)
-		projPos = projPos + projVel * dt
-		-- step target
-		tVel = tVel + accel * dt
-		if pGrav > 0 then
-			tVel = tVel - Vector3.new(0, pGrav * dt, 0)
-		end
-		tPos = tPos + tVel * dt
-		-- ground clamp target
-		if params then
-			local gRay = workspace:Raycast(tPos + Vector3.new(0, 5, 0), Vector3.new(0, -30, 0), params)
-			if gRay then
-				local floorY = gRay.Position.Y + (playerHeight or 3)
-				if tPos.Y < floorY then
-					tPos = Vector3.new(tPos.X, floorY, tPos.Z)
-					if tVel.Y < 0 then tVel = Vector3.new(tVel.X, 0, tVel.Z) end
-				end
-			end
-		end
-		-- check if projectile reached target
-		if (projPos - tPos).Magnitude < 6 then
-			return tPos
-		end
-		-- check if projectile passed target plane (went too far)
-		if projPos.Y < origin.Y - 200 then break end
-	end
-	return targetPos
-end
-
--- Advanced solver: iterative refinement with acceleration, ping comp, ground clamping
-function module.SolveTrajectoryAdvanced(origin, projectileSpeed, gravity, targetPos, targetVelocity, targetAccel, playerGravity, playerHeight, playerJump, params, pingTime)
-	pingTime = pingTime or 0
-	targetAccel = targetAccel or Vector3.zero
-
-	-- Find the floor level directly below target's CURRENT position
-	-- This gives us the bridge or ground level they are on/above before we predict movement
-	local currentFloorY = nil
-	if params then
-		local gRay = workspace:Raycast(
-			Vector3.new(targetPos.X, targetPos.Y + 3, targetPos.Z),
-			Vector3.new(0, -60, 0), params
-		)
-		if gRay then
-			currentFloorY = gRay.Position.Y + (playerHeight or 3)
-		end
-	end
-
-	-- advance target state by network latency
-	if pingTime > 0.005 then
-		targetPos = targetPos + targetVelocity * pingTime + 0.5 * targetAccel * pingTime * pingTime
-		targetVelocity = targetVelocity + targetAccel * pingTime
-	end
-
-	-- iteration 1: standard quartic solve
-	local result, t0 = module.SolveTrajectory(origin, projectileSpeed, gravity, targetPos, targetVelocity, playerGravity, playerHeight, playerJump, params)
-
-	if not result then
-		-- quartic failed completely, use Euler stepping
-		return module.EulerFallback(origin, projectileSpeed, gravity, targetPos, targetVelocity, targetAccel, playerGravity, playerHeight, params)
-	end
-
-	-- skip refinement ONLY if no acceleration AND target is grounded
-	local accelMag = targetAccel.Magnitude
-	local isAirborne = math.abs(targetVelocity.Y) > 2
-	if accelMag < 0.5 and not isAirborne then
-		return result
-	end
-
-	-- iterative refinement: re-predict target position accounting for acceleration + gravity at estimated flight time
-	local bestResult = result
-	local bestT = t0 or ((result - origin).Magnitude / projectileSpeed)
-
-	for iter = 1, 6 do
-		-- Predict future position using measured velocity and acceleration.
-		-- Cap downward vertical acceleration spikes to prevent massive overshoots under Roblox network updates
-		local yAccel = targetAccel.Y
-		if yAccel < -80 then
-			yAccel = -80
-		end
-		local predPos = targetPos + targetVelocity * bestT + 0.5 * Vector3.new(targetAccel.X, yAccel, targetAccel.Z) * bestT * bestT
-
-		-- Clamp to the current floor level if the prediction suggests they will fall through the bridge/ground they are currently above
-		if currentFloorY and predPos.Y < currentFloorY then
-			predPos = Vector3.new(predPos.X, currentFloorY, predPos.Z)
-		end
-
-		-- ground clamp: raycast from above predicted height down for sloped terrain / multi-level bridges
-		if params then
-			local rayStartY = math.max(predPos.Y + 8, targetPos.Y + 10)
-			local gRay = workspace:Raycast(
-				Vector3.new(predPos.X, rayStartY, predPos.Z),
-				Vector3.new(0, -(rayStartY - predPos.Y + 40), 0), params
-			)
-			if gRay then
-				local floorY = gRay.Position.Y + (playerHeight or 3)
-				if predPos.Y < floorY then
-					predPos = Vector3.new(predPos.X, floorY, predPos.Z)
-				end
-			end
-		end
-
-		-- re-solve quartic to this new position with zero velocity (already predicted)
-		local newResult, newT = module.SolveTrajectory(origin, projectileSpeed, gravity, predPos, Vector3.zero, 0, 0, nil, params)
-
-		if not newResult then
-			break
-		end
-
-		bestResult = newResult
-		local prevT = bestT
-		bestT = newT or ((newResult - origin).Magnitude / projectileSpeed)
-
-		-- converged
-		if math.abs(bestT - prevT) < 0.015 then
-			break
-		end
-	end
-
-	return bestResult
 end
 
 return module
