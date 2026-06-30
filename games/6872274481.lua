@@ -2887,15 +2887,20 @@ end)
 
 	-- Set mouse.TargetFilter to exclude the ProjectileTargeting folder so that
 	-- mouse.Hit gives us the true world target under the cursor, not the Part itself.
-	local function getMouseHitPos()
-		local pt = workspace:FindFirstChild("ProjectileTargeting")
-		-- Temporarily set TargetFilter so mouse.Hit ignores the targeting part
-		local prev = mouse.TargetFilter
-		if pt then mouse.TargetFilter = pt end
-		local pos = mouse.Hit.Position
-		mouse.TargetFilter = prev
-		return pos
-	end
+local function getMouseHitPos()
+    local mousePos = inputService:GetMouseLocation()
+    local ray = gameCamera:ScreenPointToRay(mousePos.X, mousePos.Y)
+    
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
+    
+    local result = workspace:Raycast(ray.Origin, ray.Direction * 2000, raycastParams)
+    if result then
+        return result.Position -- Returns the exact spot you clicked
+    else
+        return ray.Origin + ray.Direction * 2000 -- Keeps laser visible even in the sky
+    end
+end
 
 	-- Try to find the active projectile handler on ProjectileController.
 	-- The handler has an 'aimPoint' or 'targetPosition' field we can override.
