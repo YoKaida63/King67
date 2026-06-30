@@ -4769,6 +4769,123 @@ run(function()
         Tooltip = 'Take no fall damage.'
     })
 end)
+				local FastModules
+	local speedMultiplier = 1.5
+	
+	local function enableFastMode()
+		-- Speed up global performance config
+		if getgenv().VapePerf then
+			-- Store originals
+			getgenv().VapePerf._originalConfig = {
+				MAX_HEARTBEAT_FPS = getgenv().VapePerf.config.MAX_HEARTBEAT_FPS,
+				MAX_RENDERSTEPPED_FPS = getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS,
+				ENTITY_CACHE_DURATION = getgenv().VapePerf.config.ENTITY_CACHE_DURATION,
+			}
+			
+			-- Increase all update rates
+			getgenv().VapePerf.config.MAX_HEARTBEAT_FPS = math.floor(getgenv().VapePerf.config.MAX_HEARTBEAT_FPS * speedMultiplier)
+			getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS = math.floor(getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS * speedMultiplier)
+			getgenv().VapePerf.config.ENTITY_CACHE_DURATION = getgenv().VapePerf.config.ENTITY_CACHE_DURATION / speedMultiplier
+		end
+		
+		-- Global speed multiplier
+		getgenv().VapeFastMode = speedMultiplier
+		
+		vape:CreateNotification("FastModules", "All modules running at "..math.floor(speedMultiplier*100).."% speed!", 5, "success")
+	end
+	
+	local function disableFastMode()
+		if getgenv().VapePerf and getgenv().VapePerf._originalConfig then
+			local orig = getgenv().VapePerf._originalConfig
+			getgenv().VapePerf.config.MAX_HEARTBEAT_FPS = orig.MAX_HEARTBEAT_FPS
+			getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS = orig.MAX_RENDERSTEPPED_FPS
+			getgenv().VapePerf.config.ENTITY_CACHE_DURATION = orig.ENTITY_CACHE_DURATION
+			getgenv().VapePerf._originalConfig = nil
+		end
+		
+		getgenv().VapeFastMode = 1
+		
+		vape:CreateNotification("FastModules", "Module speeds restored to normal.", 3)
+	end
+	
+	FastModules = vape.Categories.BoostFPS:CreateModule({
+		Name = 'FastModules',
+		Function = function(callback)
+			if callback then
+				enableFastMode()
+			else
+				disableFastMode()
+			end
+		end,
+		Tooltip = 'Makes all modules work faster - KillAura attacks faster, ESP updates faster, etc.'
+	})
+end)																																						
+run(function()
+    local BackTrack
+    local Mode
+    local Latency
+    local Tick
+    
+    BackTrack = vape.Categories.Utility:CreateModule({
+        Name = 'Back Track',
+        Function = function(callback)
+            if callback then
+                repeat
+                    local ent = entitylib.EntityPosition({
+                        Part = 'RootPart',
+                        Range = 22,
+                        Players = true,
+                        Wallcheck = true,
+                    })
+    
+                    if ent then
+                        if Mode.Value == 'Manual' then
+                            setfflag('TargetTimeDelayFacctorTenths', '50000')
+                            task.wait(0.05 * Tick.Value)
+                            setfflag('TargetTimeDelayFacctorTenths', '20')
+                            task.wait(0.05 * Tick.Value)
+                        else
+                            setfflag('TargetTimeDelayFacctorTenths', tostring(math.floor(20 + (Latency:GetRandomValue() / 20))))
+                            task.wait(1)
+                        end
+                    else
+                        setfflag('TargetTimeDelayFacctorTenths', '20')
+                    end
+                    task.wait()
+                until not BackTrack.Enabled
+            end
+        end,
+        Tooltip = 'Lags targets at certain times to increase attack distance'
+    })
+    getgenv().Backtrack = BackTrack
+    Latency = BackTrack:CreateTwoSlider({
+        Name = 'Latency',
+        Min = 1,
+        Max = 500,
+        DefaultMin = 50,
+        DefaultMax = 120,
+        Darker = true,
+    })
+    Tick = BackTrack:CreateSlider({
+        Name = 'Ticks',
+        Min = 1,
+        Max = 20,
+        Default = 5,
+        Darker = true,
+        Visible = false,
+    })
+    Mode = BackTrack:CreateDropdown({
+        Name = 'Mode',
+        List = { 'Manual', 'Lag Based' },
+        Default = 'Manual',
+        Function = function(val)
+            if Latency and Tick then
+                Latency.Object.Visible = val == 'Manual'
+                Tick.Object.Visible = val == 'Lag Based'
+            end
+        end,
+    })
+end)
 																																								
 -- King killaura 
 local Attacking
