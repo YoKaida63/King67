@@ -37193,114 +37193,89 @@ run(function()
 end)
 
 run(function()
-    local AntiLasso
-    local Mode
-    local Notify
-    local heartbeatConn
-    local preSimConn
-    local lastSafeCFrame = nil
-    local isLassoed = false
-    local lassoedTime = 0
-    
-    AntiLasso = vape.Categories.Combat:CreateModule({
+    local AntiLasso = vape.Categories.Combat:CreateModule({
         Name = 'AntiLasso',
         Function = function(callback)
             if callback then
-                isLassoed = false
-                lastSafeCFrame = nil
-                lassoedTime = 0
+                local char = lplr.Character
+                if not char then return end
                 
-                -- 1. Detect Lasso & Destroy Constraints
-                heartbeatConn = runService.Heartbeat:Connect(function()
-                    if not entitylib.isAlive then return end
-                    local char = entitylib.character.Character
-                    local hrp = entitylib.character.RootPart
-                    if not hrp then return end
-                    
-                    local foundLasso = false
-                    
-                    for _, obj in ipairs(char:GetDescendants()) do
-                        local name = obj.Name:lower()
-                        if name:find("lasso") or name:find("tether") or name:find("rope") or name:find("pull") then
-                            if obj:IsA("RopeConstraint") or obj:IsA("RodConstraint") or obj:IsA("Beam") or obj:IsA("VectorForce") or obj:IsA("BodyVelocity") or obj:IsA("BodyPosition") or obj:IsA("AlignPosition") or obj:IsA("LineForce") or obj:IsA("Attachment") then
-                                pcall(function() obj:Destroy() end)
-                                foundLasso = true
-                            end
-                        end
-                    end
-                    
-                    if char:GetAttribute("Lassoed") or char:GetAttribute("Tethered") or char:GetAttribute("IsLassoed") or char:GetAttribute("IsTethered") then
-                        foundLasso = true
-                    end
-                    
-                    if foundLasso then
-                        if not isLassoed then
-                            isLassoed = true
-                            lassoedTime = tick()
-                            if Notify and Notify.Enabled then
-                                vape:CreateNotification("AntiLasso", "Lasso detected! Blocking pull...", 3, "info")
-                            end
-                        end
-                    else
-                        if isLassoed and (tick() - lassoedTime > 0.5) then
-                            isLassoed = false
-                        end
-                    end
-                end)
+                local connections = {}
                 
-                -- 2. Override Physics to Prevent Pulling (The Magic)
-                preSimConn = runService.PreSimulation:Connect(function(dt)
-                    if not entitylib.isAlive then return end
-                    local hrp = entitylib.character.RootPart
-                    if not hrp then return end
-                    
-                    if isLassoed then
-                        local mode = Mode and Mode.Value or "Freeze"
+                -- Function to detect if a physics object is a lasso pulling us
+                local function isLassoPhysics(desc)
+                    if desc:IsA("RopeConstraint") or desc:IsA("RodConstraint") or desc:IsA("LineForce") or desc:IsA("VectorForce") or desc:IsA("BodyVelocity") or desc:IsA("BodyPosition") then
+                        if desc.Name:lower():find("lasso") then return true end
                         
-                        if mode == "Freeze" then
-                            -- FREEZE: Locks your X and Z coordinates to where you were standing.
-                            -- The server will try to pull you, but your client will forcefully snap you back.
-                            -- This causes a massive Desync that breaks the server's lasso logic.
-                            hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
-                            if lastSafeCFrame then
-                                local currentCF = hrp.CFrame
-                                hrp.CFrame = CFrame.new(lastSafeCFrame.X, currentCF.Y, lastSafeCFrame.Z) * CFrame.Angles(0, currentCF:ToEulerAnglesYXZ(), 0)
+                        local att0 = desc.Attachment0
+                        local att1 = desc.Attachment1
+                        if att0 and att1 then
+                            local p0 = att0.Parent
+                            local p1 = att1.Parent
+                            if p0 and p1 then
+                                local isUs0 = char:IsAncestorOf(p0) or p0 == char
+                                local isUs1 = char:IsAncestorOf(p1) or p1 == char
+                                -- If it connects us to something outside of us, it's a lasso
+                                if (isUs0 and not isUs1) or (isUs1 and not isUs0) then
+                                    return true
+                                end
                             end
-                        elseif mode == "Repel" then
-                            -- REPEL: Kills the pull velocity and tries to take Network Ownership.
-                            hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity * 0.1
-                            pcall(function() workspace:SetNetworkOwner(hrp, lplr) end)
-                        elseif mode == "Desync" then
-                            -- DESYNC: Rapidly jitters your position to break the server's interpolation.
-                            local offset = Vector3.new(math.random(-15, 15)/10, 0, math.random(-15, 15)/10)
-                            hrp.CFrame = hrp.CFrame + offset
                         end
-                    else
-                        -- Save your safe position when NOT lassoed
-                        lastSafeCFrame = hrp.CFrame
+                    end
+                    return false
+                end
+                
+                -- Aggressively destroy any lasso physics the moment it spawns on us
+                local function destroyLasso(desc)
+                    if not desc or not desc.Parent then return end
+                    if isLassoPhysics(desc) then
+                        task.defer(function()
+                            if desc and desc.Parent then
+                                pcall(function() desc:Destroy() end)
+                            end
+                        end)
+                    end
+                end
+                
+                table.insert(connections, char.DescendantAdded:Connect(destroyLasso))
+                for _, desc in pairs(char:GetDescendants()) do
+                    destroyLasso(desc)
+                end
+                
+                -- PreSimulation hook to steal Network Ownership and freeze pulls
+                local preSimConn = runService.PreSimulation:Connect(function()
+                    if not AntiLasso.Enabled then return end
+                    local root = entitylib.character and entitylib.character.RootPart
+                    if not root then return end
+                    
+                    -- 1. Force the server to let us control our own physics
+                    pcall(function() root:SetNetworkOwner(lplr) end)
+                    
+                    -- 2. Failsafe: If velocity spikes (being pulled) and a lasso exists, freeze movement
+                    local vel = root.AssemblyLinearVelocity
+                    if vel.Magnitude > 60 then
+                        local hasLasso = false
+                        for _, d in pairs(char:GetDescendants()) do
+                            if isLassoPhysics(d) then
+                                hasLasso = true
+                                break
+                            end
+                        end
+                        if hasLasso then
+                            -- Zero out horizontal velocity so you drop straight down instead of getting dragged
+                            root.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
+                        end
                     end
                 end)
+                table.insert(connections, preSimConn)
                 
-            else
-                if heartbeatConn then heartbeatConn:Disconnect() heartbeatConn = nil end
-                if preSimConn then preSimConn:Disconnect() preSimConn = nil end
-                isLassoed = false
-                lastSafeCFrame = nil
+                AntiLasso:Clean(function()
+                    for _, conn in pairs(connections) do
+                        if conn then conn:Disconnect() end
+                    end
+                end)
             end
         end,
-        Tooltip = 'Prevents lasso pulls by overriding client physics'
-    })
-    
-    Mode = AntiLasso:CreateDropdown({
-        Name = 'Mode',
-        List = {'Freeze', 'Repel', 'Desync'},
-        Default = 'Freeze',
-        Tooltip = 'Freeze: Locks your X/Z position (Best)\nRepel: Kills pull velocity\nDesync: Jitters to break server calc'
-    })
-    
-    Notify = AntiLasso:CreateToggle({
-        Name = 'Notify',
-        Default = true,
-        Tooltip = 'Show notification when lasso is blocked'
+        Tooltip = 'Destroys lasso constraints, steals network ownership, and freezes pulls.'
     })
 end)
