@@ -1,52 +1,11 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
-pcall(function()
-	local l = Instance.new("ScreenGui")
-	l.Name = "VapeLoading"
-	l.ResetOnSpawn = false
-	l.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	local f = Instance.new("Frame")
-	f.Size = UDim2.new(1, 0, 1, 0)
-	f.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-	f.BackgroundTransparency = 1
-	local t = Instance.new("TextLabel")
-	t.Size = UDim2.new(1, 0, 0, 50)
-	t.Position = UDim2.new(0, 0, 0.5, -25)
-	t.BackgroundTransparency = 1
-	t.Text = "Loading Fuzzynuts..."
-	t.TextColor3 = Color3.fromRGB(200, 200, 200)
-	t.TextScaled = true
-	t.Font = Enum.Font.SourceSansBold
-	t.Parent = f
-	local p = Instance.new("Frame")
-	p.Size = UDim2.new(0.5, 0, 0, 6)
-	p.Position = UDim2.new(0.25, 0, 0.5, 30)
-	p.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-	p.BorderSizePixel = 0
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(0, 0, 1, 0)
-	bar.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
-	bar.BorderSizePixel = 0
-	bar.Name = "Bar"
-	bar.Parent = p
-	p.Parent = f
-	f.Parent = l
-	l.Parent = game:GetService("CoreGui")
-	local dir = 1
-	task.spawn(function()
-		while l.Parent do
-			task.wait(0.02)
-			local s = bar.Size.X.Offset + dir * 3
-			if s > p.AbsoluteSize.X then dir = -1; s = p.AbsoluteSize.X end
-			if s < 0 then dir = 1; s = 0 end
-			bar.Size = UDim2.new(0, s, 1, 0)
-		end
-	end)
+
 	run = function(func)
 		local ok, err = xpcall(func, debug.traceback)
 		if not ok then
-			warn('[SKIDV7] module failed to load: ' .. tostring(err))
+			warn('[KingV4] module failed to load: ' .. tostring(err))
 			pcall(function()
-				vape:CreateNotification('Fuzzynuts', 'Module error: ' .. tostring(err):match('(.+)\n') or tostring(err), 10, 'alert')
+				vape:CreateNotification('KingV4', 'Module error: ' .. tostring(err):match('(.+)\n') or tostring(err), 10, 'alert')
 			end)
 		end
 	end
@@ -2798,7 +2757,7 @@ run(function()
 
     local function createkitrender(plr)
         local icon = Instance.new("ImageLabel")
-        icon.Name = "SkidV7KitRender" 
+        icon.Name = "KingV4KitRender" 
         icon.AnchorPoint = Vector2.new(1, 0.5)
         icon.BackgroundTransparency = 1
         icon.Position = UDim2.new(1.05, 0, 0.5, 0)
@@ -2830,7 +2789,7 @@ run(function()
         end
         
         for _, v in ipairs(PlayerGui:GetDescendants()) do
-            if v:IsA("ImageLabel") and v.Name == "SkidV7KitRender" then  
+            if v:IsA("ImageLabel") and v.Name == "KingV4KitRender" then  
                 v:Destroy()
             end
         end
@@ -2896,7 +2855,7 @@ run(function()
             local card = container:FindFirstChild("1") and container["1"]:FindFirstChild("MatchDraftPlayerCard")
             if not card then return end
             
-            local icon = card:FindFirstChild("SkidV7KitRender")  
+            local icon = card:FindFirstChild("KingV4KitRender")  
             if not icon then
                 icon = createkitrender(playerFound)
                 icon.Parent = card
@@ -2931,7 +2890,7 @@ run(function()
     local function createKitLabel(parent, kitImage)
         if kitLabels[parent] then kitLabels[parent]:Destroy() end
         local kitLabel = Instance.new("ImageLabel")
-        kitLabel.Name = "SkidV7KitIcon"
+        kitLabel.Name = "KingV4KitIcon"
         kitLabel.Size = UDim2.new(1, 0, 1, 0)
         kitLabel.Position = UDim2.new(1.1, 0, 0, 0)
         kitLabel.BackgroundTransparency = 1
@@ -7630,7 +7589,7 @@ run(function()
                             newKitImage = res.renderImage
                         else
                             if not suc then
-                                warn(`[SKIDV7 MODULE ISSUE]: [Module - NameTags (Using bedwars.BedwarsKitMeta)] [Error]: {res}`)
+                                warn(`[KingV4 MODULE ISSUE]: [Module - NameTags (Using bedwars.BedwarsKitMeta)] [Error]: {res}`)
                             end
                             newKitImage = kitImageIds[kit] or kitImageIds['none']
                         end
@@ -15223,9 +15182,9 @@ run(function()
 	local processing = {}
 
 	local _req = (syn and syn.request) or (http_request and function(t) return http_request(t) end) or request or function() return {Body='{}'} end
-	if not getgenv()._skidv7_getBackendUrl then
+	if not getgenv()._KingV4_getBackendUrl then
 		local _cachedUrl
-		getgenv()._skidv7_getBackendUrl = function()
+		getgenv()._KingV4_getBackendUrl = function()
 			if _cachedUrl then return _cachedUrl end
 			local ok, res = pcall(function()
 				return _req({Url='https://gist.githubusercontent.com/poopparty/a817668f8805b6d44fa54ff13dc8edf4/raw/url.txt',Method='GET'})
@@ -15236,7 +15195,7 @@ run(function()
 			return _cachedUrl
 		end
 	end
-	local _bu = getgenv()._skidv7_getBackendUrl
+	local _bu = getgenv()._KingV4_getBackendUrl
 
 	local listsLoaded = false
 	task.spawn(function()
@@ -15275,7 +15234,7 @@ run(function()
 		listsLoaded = true
 	end)
 
-	getgenv()._skidv7_staffCounts = {spec=0, closet=0, mod=0, impossible=0}
+	getgenv()._KingV4_staffCounts = {spec=0, closet=0, mod=0, impossible=0}
 	local function refreshStaffCounts()
 		local c = {spec=0, closet=0, mod=0, impossible=0}
 		for _, data in pairs(detectedPlayers) do
@@ -15285,7 +15244,7 @@ run(function()
 			elseif ct == 'impossible_join' then c.impossible += 1
 			else c.mod += 1 end
 		end
-		getgenv()._skidv7_staffCounts = c
+		getgenv()._KingV4_staffCounts = c
 		vapeEvents.StaffCountUpdate:Fire()
 	end
 
@@ -15488,7 +15447,7 @@ run(function()
 	local watchers = {}
 
 	local _req = (syn and syn.request) or (http_request and function(t) return http_request(t) end) or request or function() return {Body='{}'} end
-	local _bu = getgenv()._skidv7_getBackendUrl or function()
+	local _bu = getgenv()._KingV4_getBackendUrl or function()
 		local ok, res = pcall(function()
 			return _req({Url='https://gist.githubusercontent.com/poopparty/a817668f8805b6d44fa54ff13dc8edf4/raw/url.txt',Method='GET'})
 		end)
@@ -26300,7 +26259,7 @@ run(function()
 						bedwars.GlacialSkaterController:updateMomentum(100, "newValue")
 					end)
 					if not suc then
-						warn(`[SKIDV7 MODULE ISSUE]: [Module - InfKrystal (Starting to update Momentum)] [Error]: {res}`)
+						warn(`[KingV4 MODULE ISSUE]: [Module - InfKrystal (Starting to update Momentum)] [Error]: {res}`)
 						runService:UnbindFromRenderStep('InfiniteKrystalMovement')
 					end
 				end)
@@ -26311,7 +26270,7 @@ run(function()
 					bedwars.GlacialSkaterController:updateMomentum(0, "newValue")
 				end)
 				if not suc then
-					warn(`[SKIDV7 MODULE ISSUE]: [Module - InfKrystal (Resetting updateMomentum function)] [Error]: {res}`)
+					warn(`[KingV4 MODULE ISSUE]: [Module - InfKrystal (Resetting updateMomentum function)] [Error]: {res}`)
 				end
 			end
 		end
