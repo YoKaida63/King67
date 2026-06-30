@@ -37191,3 +37191,63 @@ run(function()
 		Darker = true
 	})
 end)
+
+run(function()
+local AntiLasso
+local oldGet
+AntiLasso = vape.Categories.Utility:CreateModule({
+Name = 'AntiLasso',
+Tooltip = 'Prevents you from being pulled by enemy lassos',
+Function = function(callback)
+if callback then
+-- Hook the client remote getter to block lasso/tether/pull remotes
+oldGet = bedwars.Client.Get
+bedwars.Client.Get = function(self, remoteName)
+if AntiLasso.Enabled and remoteName then
+local lowerName = tostring(remoteName):lower()
+if lowerName:find("lasso") or lowerName:find("tether") or lowerName:find("pull") then
+-- Return a dummy remote object that does nothing when the server tries to pull you
+return {
+SendToServer = function() end,
+FireServer = function() end,
+InvokeServer = function() return true end,
+CallServer = function() return true end,
+CallServerAsync = function() return {await = function() return true end} end
+}
+end
+end
+return oldGet(self, remoteName)
+end
+
+-- Destroy incoming lasso projectiles near your character
+AntiLasso:Clean(runService.Heartbeat:Connect(function()
+if not AntiLasso.Enabled then return end
+if not entitylib.isAlive then return end
+local myPos = entitylib.character.RootPart.Position
+for _, v in workspace:GetDescendants() do
+if v:IsA("BasePart") or v:IsA("Model") then
+local name = v.Name:lower()
+if name:find("lasso") or name:find("tether") then
+-- Check if the projectile belongs to someone else
+local shooter = v:GetAttribute("ProjectileShooter") or v:GetAttribute("Shooter") or v:GetAttribute("OwnerId") or v:GetAttribute("PlacedByUserId")
+if shooter and shooter ~= lplr.UserId then
+local pos = v:IsA("Model") and v.PrimaryPart and v.PrimaryPart.Position or v.Position
+-- Destroy the lasso if it gets within 20 studs of you
+if pos and (pos - myPos).Magnitude < 20 then
+pcall(function() v:Destroy() end)
+end
+end
+end
+end
+end
+end))
+else
+-- Restore the original remote getter when disabled
+if oldGet then
+bedwars.Client.Get = oldGet
+oldGet = nil
+end
+end
+end
+})
+end)
