@@ -2543,7 +2543,26 @@ local AimAssist
 		end
 	end)
 end)
-	
+
+			run(function()
+    local old
+    
+    vape.Categories.Combat:CreateModule({
+        Name = 'No Click Delay',
+        Function = function(callback)
+            if callback then
+                old = bedwars.SwordController.isClickingTooFast
+                bedwars.SwordController.isClickingTooFast = function(self)
+                    self.lastSwing = os.clock()
+                    return false
+                end
+            else
+                bedwars.SwordController.isClickingTooFast = old
+            end
+        end,
+        Tooltip = 'Remove the CPS cap'
+    })
+end)	
 run(function()
     if isMobile then
         local AutoClicker
@@ -4734,7 +4753,157 @@ run(function()
 		Tooltip = 'Lets you sprint with a speed potion.'
 	})
 end)
+run(function()
+    local NoFall
 
+    NoFall = vape.Categories.Blatant:CreateModule({
+        Name = 'Render NoFall',
+        Function = function(callback)
+            if callback then
+                NoFall:Clean(runService.Heartbeat:Connect(function(dt)
+                    if entitylib.isAlive and bedwars.Knit.Controllers.MatchController:getMatchState() == 1 then
+                        local root = entitylib.character.RootPart
+                        local v = root.Velocity
+
+                        if root.Velocity.Y < -35 and not vape.Modules.Fly.Enabled then
+                            root.Velocity = Vector3.new(0,2.5,0)
+                            entitylib.character.Humanoid:ChangeState(Enum.HumanoidStateType.Landed)
+                            runService.PreRender:Wait()
+                            root.Velocity = v
+                        end
+                    end
+                end))
+
+                NoFall:Clean(entitylib.Events.LocalAdded:Connect(function(char)
+                    local animator = char.Humanoid:WaitForChild('Animator', 1)
+                    if animator and NoFall.Enabled and not vape.Modules.Fly.Enabled then
+                        task.wait(.5)
+                        NoFall:Toggle()
+                        NoFall:Toggle()
+                    end
+                end))
+            end
+        end,
+        Tooltip = 'Take no fall damage.'
+    })
+end)
+																																											local FastModules
+	local speedMultiplier = 1.5
+	
+	local function enableFastMode()
+		-- Speed up global performance config
+		if getgenv().VapePerf then
+			-- Store originals
+			getgenv().VapePerf._originalConfig = {
+				MAX_HEARTBEAT_FPS = getgenv().VapePerf.config.MAX_HEARTBEAT_FPS,
+				MAX_RENDERSTEPPED_FPS = getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS,
+				ENTITY_CACHE_DURATION = getgenv().VapePerf.config.ENTITY_CACHE_DURATION,
+			}
+			
+			-- Increase all update rates
+			getgenv().VapePerf.config.MAX_HEARTBEAT_FPS = math.floor(getgenv().VapePerf.config.MAX_HEARTBEAT_FPS * speedMultiplier)
+			getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS = math.floor(getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS * speedMultiplier)
+			getgenv().VapePerf.config.ENTITY_CACHE_DURATION = getgenv().VapePerf.config.ENTITY_CACHE_DURATION / speedMultiplier
+		end
+		
+		-- Global speed multiplier
+		getgenv().VapeFastMode = speedMultiplier
+		
+		vape:CreateNotification("FastModules", "All modules running at "..math.floor(speedMultiplier*100).."% speed!", 5, "success")
+	end
+	
+	local function disableFastMode()
+		if getgenv().VapePerf and getgenv().VapePerf._originalConfig then
+			local orig = getgenv().VapePerf._originalConfig
+			getgenv().VapePerf.config.MAX_HEARTBEAT_FPS = orig.MAX_HEARTBEAT_FPS
+			getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS = orig.MAX_RENDERSTEPPED_FPS
+			getgenv().VapePerf.config.ENTITY_CACHE_DURATION = orig.ENTITY_CACHE_DURATION
+			getgenv().VapePerf._originalConfig = nil
+		end
+		
+		getgenv().VapeFastMode = 1
+		
+		vape:CreateNotification("FastModules", "Module speeds restored to normal.", 3)
+	end
+	
+	FastModules = vape.Categories.BoostFPS:CreateModule({
+		Name = 'FastModules',
+		Function = function(callback)
+			if callback then
+				enableFastMode()
+			else
+				disableFastMode()
+			end
+		end,
+		Tooltip = 'Makes all modules work faster - KillAura attacks faster, ESP updates faster, etc.'
+	})
+end)
+																																									run(function()
+    local BackTrack
+    local Mode
+    local Latency
+    local Tick
+    
+    BackTrack = vape.Categories.Utility:CreateModule({
+        Name = 'Back Track',
+        Function = function(callback)
+            if callback then
+                repeat
+                    local ent = entitylib.EntityPosition({
+                        Part = 'RootPart',
+                        Range = 22,
+                        Players = true,
+                        Wallcheck = true,
+                    })
+    
+                    if ent then
+                        if Mode.Value == 'Manual' then
+                            setfflag('TargetTimeDelayFacctorTenths', '50000')
+                            task.wait(0.05 * Tick.Value)
+                            setfflag('TargetTimeDelayFacctorTenths', '20')
+                            task.wait(0.05 * Tick.Value)
+                        else
+                            setfflag('TargetTimeDelayFacctorTenths', tostring(math.floor(20 + (Latency:GetRandomValue() / 20))))
+                            task.wait(1)
+                        end
+                    else
+                        setfflag('TargetTimeDelayFacctorTenths', '20')
+                    end
+                    task.wait()
+                until not BackTrack.Enabled
+            end
+        end,
+        Tooltip = 'Lags targets at certain times to increase attack distance'
+    })
+    getgenv().Backtrack = BackTrack
+    Latency = BackTrack:CreateTwoSlider({
+        Name = 'Latency',
+        Min = 1,
+        Max = 500,
+        DefaultMin = 50,
+        DefaultMax = 120,
+        Darker = true,
+    })
+    Tick = BackTrack:CreateSlider({
+        Name = 'Ticks',
+        Min = 1,
+        Max = 20,
+        Default = 5,
+        Darker = true,
+        Visible = false,
+    })
+    Mode = BackTrack:CreateDropdown({
+        Name = 'Mode',
+        List = { 'Manual', 'Lag Based' },
+        Default = 'Manual',
+        Function = function(val)
+            if Latency and Tick then
+                Latency.Object.Visible = val == 'Manual'
+                Tick.Object.Visible = val == 'Lag Based'
+            end
+        end,
+    })
+end)
 -- King killaura 
 local Attacking
 run(function()
@@ -6753,7 +6922,162 @@ run(function()
         end
     })
 end)
-	
+
+																																																																												run(function()
+    local AutoLegitFarm
+    local RandomQueue
+    local AutoMovement
+    
+    -- Anti-AFK
+    local function disableAfk()
+        pcall(function()
+            for _, v in getconnections(lplr.Idled) do
+                v:Disconnect()
+            end
+        end)
+    end
+
+    -- キュー参加機能
+    local function joinQueue()
+        local state = bedwars.Store:getState()
+        if state.Party.leader.userId == lplr.UserId and state.Party.queueState == 0 then
+            if RandomQueue.Enabled then
+                local listofmodes = {}
+                for i, v in bedwars.QueueMeta do
+                    if not v.disabled and not v.voiceChatOnly and not v.rankCategory then
+                        table.insert(listofmodes, i)
+                    end
+                end
+                if #listofmodes > 0 then
+                    bedwars.QueueController:joinQueue(listofmodes[math.random(1, #listofmodes)])
+                else
+                    bedwars.QueueController:joinQueue(store.queueType)
+                end
+            else
+                bedwars.QueueController:joinQueue(store.queueType)
+            end
+        end
+    end
+
+    -- 剣を取得 (ベースコードのgetSwordとは別に簡易版を用意)
+    local function getMySword()
+        local inv = store.inventory and store.inventory.inventory and store.inventory.inventory.items
+        if not inv then return nil end
+        for _, item in pairs(inv) do
+            if item.itemType and string.find(item.itemType:lower(), "sword") then
+                return item.itemType
+            end
+        end
+        return nil
+    end
+
+    AutoLegitFarm = vape.Categories.Utility:CreateModule({
+        Name = "AutoLegitFarm",
+        Function = function(callback)
+            if callback then
+                disableAfk()
+                
+                -- メインループ
+                task.spawn(function()
+                    local moveTimer = 0
+                    local camTimer = 0
+                    
+                    while AutoLegitFarm.Enabled do
+                        task.wait(0.1)
+                        disableAfk()
+                        
+                        local state = bedwars.Store:getState()
+                        local matchState = state.Game.matchState
+                        
+                        -- 試合中のレジット行動 (剣振り)
+                        if matchState == 1 then
+                            local sword = getMySword()
+                            if sword then
+                                pcall(function()
+                                    switchItem(sword, 0.1)
+                                    bedwars.SwordController:swingSwordAtMouse()
+                                end)
+                            end
+                        end
+                        
+                        -- AutoMovement ロジック (Humanoid:MoveTo使用)
+                        if AutoMovement.Enabled and entitylib.isAlive then
+                            local hum = entitylib.character.Humanoid
+                            local root = entitylib.character.RootPart
+                            
+                            -- MoveTo の更新 (0.5〜1.5秒ごとにランダムな地点へ)
+                            moveTimer = moveTimer - 0.1
+                            if moveTimer <= 0 then
+                                moveTimer = math.random(5, 15) / 10
+                                
+                                -- 現在位置からランダムなオフセットを計算
+                                local offsetX = math.random(-15, 15)
+                                local offsetZ = math.random(-15, 15)
+                                local targetPos = root.Position + Vector3.new(offsetX, 0, offsetZ)
+                                
+                                -- Humanoid:MoveTo で移動指示
+                                pcall(function()
+                                    hum:Move(targetPos)
+                                end)
+                            end
+                            
+                            -- カメラの自然な揺れ
+                            camTimer = camTimer - 0.1
+                            if camTimer <= 0 then
+                                camTimer = math.random(10, 30) / 10
+                                local rx = math.random(-3, 3) / 100
+                                local ry = math.random(-3, 3) / 100
+                                pcall(function()
+                                    gameCamera.CFrame = gameCamera.CFrame * CFrame.Angles(rx, ry, 0)
+                                end)
+                            end
+                        end
+                    end
+                end)
+
+                -- 試合終了時の再キュー
+                AutoLegitFarm:Clean(vapeEvents.MatchEndEvent.Event:Connect(function()
+                    task.wait(2)
+                    joinQueue()
+                end))
+
+                -- 死亡 + 試合終了時の再キュー
+                AutoLegitFarm:Clean(vapeEvents.EntityDeathEvent.Event:Connect(function(deathTable)
+                    if deathTable.entityInstance == lplr.Character then
+                        local state = bedwars.Store:getState()
+                        if state.Game.matchState == 2 then
+                            task.wait(2)
+                            joinQueue()
+                        end
+                    end
+                end))
+
+                -- ベッド破壊時の再キュー
+                AutoLegitFarm:Clean(vapeEvents.BedwarsBedBreak.Event:Connect(function(bedTable)
+                    local myTeam = tonumber(lplr:GetAttribute('Team'))
+                    local brokenTeam = tonumber(bedTable.brokenBedTeam.id)
+                    if myTeam and brokenTeam and myTeam == brokenTeam then
+                        task.wait(1.5)
+                        joinQueue()
+                    end
+                end))
+            end
+        end,
+        Tooltip = "Anti-AFK, legit farm, auto queue & Humanoid:MoveTo movement."
+    })
+
+    RandomQueue = AutoLegitFarm:CreateToggle({
+        Name = "Random Queue",
+        Default = true,
+        Tooltip = "Queues a random available mode instead of current mode."
+    })
+
+    AutoMovement = AutoLegitFarm:CreateToggle({
+        Name = "Auto Movement",
+        Default = false,
+        Tooltip = "Uses Humanoid:MoveTo to simulate natural wandering."
+    })
+end)
 run(function()
     local old
     local SophiaCheck
@@ -20070,6 +20394,219 @@ run(function()
 	})
 end)
 
+ run(function()
+	local Optimize
+	local savedEffects = {}
+	
+	local function applyOptimizations()
+		-- Graphics optimizations (doesn't block features)
+		pcall(function()
+			settings():GetService("RenderSettings").QualityLevel = Enum.QualityLevel.Level01
+			settings():GetService("RenderSettings").MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+		end)
+		
+		-- Lighting optimizations
+		pcall(function()
+			lightingService.GlobalShadows = false
+			lightingService.FogEnd = 9e9
+			lightingService.Brightness = 0
+			
+			-- Save and disable effects (don't destroy)
+			for _, effect in {lightingService:FindFirstChildOfClass("Atmosphere"),
+							  lightingService:FindFirstChildOfClass("BlurEffect"),
+							  lightingService:FindFirstChildOfClass("BloomEffect"),
+							  lightingService:FindFirstChildOfClass("ColorCorrectionEffect"),
+							  lightingService:FindFirstChildOfClass("SunRaysEffect")} do
+				if effect then
+					savedEffects[effect] = effect.Enabled
+					effect.Enabled = false
+				end
+			end
+		end)
+		
+		-- Performance config (aggressive but reversible)
+		if getgenv().VapePerf then
+			getgenv().VapePerf.config.MAX_HEARTBEAT_FPS = 30
+			getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS = 60
+			getgenv().VapePerf.config.ENTITY_CACHE_DURATION = 0.1
+			getgenv().VapePerf.config.TARGET_CACHE_DURATION = 0.1
+		end
+		
+		-- Disable particles (save references)
+		task.spawn(function()
+			for _, obj in workspace:GetDescendants() do
+				if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
+					if obj.Enabled then
+						savedEffects[obj] = true
+						obj.Enabled = false
+					end
+				end
+			end
+		end)
+		
+		-- Terrain optimizations
+		pcall(function()
+			workspace.Terrain.Decoration = false
+			workspace.Terrain.WaterReflectance = 0
+			workspace.Terrain.WaterTransparency = 0
+		end)
+		
+		vape:CreateNotification("Optimize", "Max FPS mode enabled! All features still work.", 5)
+	end
+	
+	local function restoreOptimizations()
+		pcall(function()
+			settings():GetService("RenderSettings").QualityLevel = Enum.QualityLevel.Automatic
+		end)
+		
+		-- Restore effects
+		for effect, wasEnabled in pairs(savedEffects) do
+			if effect and effect.Parent then
+				effect.Enabled = wasEnabled
+			end
+		end
+		table.clear(savedEffects)
+		
+		if getgenv().VapePerf then
+			getgenv().VapePerf.config.MAX_HEARTBEAT_FPS = 60
+			getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS = 120
+			getgenv().VapePerf.config.ENTITY_CACHE_DURATION = 0.033
+			getgenv().VapePerf.config.TARGET_CACHE_DURATION = 0.033
+		end
+		
+		vape:CreateNotification("Optimize", "Optimizations disabled.", 3)
+	end
+	
+	Optimize = vape.Categories.BoostFPS:CreateModule({
+		Name = 'Optimize',
+		Function = function(callback)
+			if callback then
+				applyOptimizations()
+			else
+				restoreOptimizations()
+			end
+		end,
+		Tooltip = 'Maximum FPS optimization - All features remain functional'
+	})
+end)
+run(function()
+	local GameOptimizer
+	local originalFFlags = {}
+	
+	local function saveFFlagstate()
+		local flags = {
+			"FFlagDebugRunParallelLuaOnMainThread",
+			"FIntTaskSchedulerTargetFps",
+			"FFlagTaskSchedulerLimitTargetFpsTo2402",
+			"DFFlagTaskSchedulerLimitTargetFpsTo2402",
+			"FFlagDebugCheckRobloxEventTime",
+			"DFIntTaskSchedulerTargetFps",
+			"FFlagEnableLoadableAnimationForMeshPartCage",
+			"DFIntS2PhysicsSenderRate",
+			"FIntDefaultMeshCacheSizeMB",
+			"DFIntDefaultMeshCacheSizeMB",
+		}
+		
+		for _, flag in ipairs(flags) do
+			pcall(function()
+				originalFFlags[flag] = getfflag(flag)
+			end)
+		end
+	end
+	
+	local function applyGameOptimizations()
+		saveFFlagstate()
+		
+		-- Enable multithreading
+		pcall(function()
+			setfflag("FFlagDebugRunParallelLuaOnMainThread", "false")
+		end)
+		
+		-- Increase target FPS
+		pcall(function()
+			setfflag("FIntTaskSchedulerTargetFps", "240")
+			setfflag("DFIntTaskSchedulerTargetFps", "240")
+			setfflag("FFlagTaskSchedulerLimitTargetFpsTo2402", "false")
+			setfflag("DFFlagTaskSchedulerLimitTargetFpsTo2402", "false")
+		end)
+		
+		-- Disable expensive event timing
+		pcall(function()
+			setfflag("FFlagDebugCheckRobloxEventTime", "false")
+		end)
+		
+		-- Optimize physics
+		pcall(function()
+			setfflag("DFIntS2PhysicsSenderRate", "240")
+			settings():GetService("PhysicsSettings").AllowSleep = true
+			settings():GetService("PhysicsSettings").PhysicsEnvironmentalThrottle = Enum.EnviromentalPhysicsThrottle.Always
+		end)
+		
+		-- Increase mesh cache
+		pcall(function()
+			setfflag("FIntDefaultMeshCacheSizeMB", "1024")
+			setfflag("DFIntDefaultMeshCacheSizeMB", "1024")
+		end)
+		
+		-- Optimize animations
+		pcall(function()
+			setfflag("FFlagEnableLoadableAnimationForMeshPartCage", "true")
+		end)
+		
+		-- Network optimizations
+		pcall(function()
+			setfflag("DFIntConnectionMTUSize", "1400")
+			settings():GetService("NetworkSettings").IncomingReplicationLag = 0
+			settings():GetService("NetworkSettings").HttpCacheCleanDelay = 300
+			settings():GetService("NetworkSettings").HttpCacheSize = 512
+		end)
+		
+		-- Additional QOL optimizations
+		pcall(function()
+			-- Disable telemetry
+			setfflag("FFlagDebugDisableTelemetryEphemeralCounter", "true")
+			setfflag("FFlagDebugDisableTelemetryEphemeralStat", "true")
+			setfflag("FFlagDebugDisableTelemetryEventIngest", "true")
+			setfflag("FFlagDebugDisableTelemetryPoint", "true")
+			setfflag("FFlagDebugDisableTelemetryV2Counter", "true")
+			setfflag("FFlagDebugDisableTelemetryV2Event", "true")
+			setfflag("FFlagDebugDisableTelemetryV2Stat", "true")
+			
+			-- Reduce rendering overhead
+			setfflag("FIntRenderLocalLightUpdatesMax", "4")
+			setfflag("FIntRenderLocalLightUpdatesMin", "2")
+			
+			-- Optimize culling
+			setfflag("DFIntCullFactorPixelThresholdMainViewHighQuality", "8000")
+			setfflag("DFIntCullFactorPixelThresholdMainViewLowQuality", "8000")
+		end)
+		
+		vape:CreateNotification("GameOptimizer", "Roblox engine optimized! Multithreading enabled, FPS boosted.", 6, "success")
+	end
+	
+	local function restoreGameOptimizations()
+		for flag, value in pairs(originalFFlags) do
+			pcall(function()
+				setfflag(flag, tostring(value))
+			end)
+		end
+		table.clear(originalFFlags)
+		
+		vape:CreateNotification("GameOptimizer", "Game optimizations disabled.", 3)
+	end
+	
+	GameOptimizer = vape.Categories.BoostFPS:CreateModule({
+		Name = 'GameOptimizer',
+		Function = function(callback)
+			if callback then
+				applyGameOptimizations()
+			else
+				restoreGameOptimizations()
+			end
+		end,
+		Tooltip = 'Optimizes Roblox engine itself - Enables multithreading, increases FPS cap, optimizes physics'
+	})
+end)
 run(function()
 	local ShadowRemover
 	local connections = {}
@@ -30567,7 +31104,288 @@ run(function()
         if ESPColor and ESPColor.Object then ESPColor.Object.Visible = false end
     end)
 end)
+run(function()
+	local AutoVulcan
+	local Targets
+	local Sort
+	local Distance
+	local Prediction
 
+	local NetManaged = game:GetService("ReplicatedStorage").rbxts_include.node_modules["@rbxts"].net.out._NetManaged
+	local AimTurretRemote = NetManaged:FindFirstChild("AimTurret")
+	local ProjectileFireRemote = NetManaged:FindFirstChild("ProjectileFire")
+	local ProjectileHitRemote = NetManaged:FindFirstChild("ProjectileHit")
+	local RaycastTurretRemote = NetManaged:FindFirstChild("RaycastTurret")
+
+	local turretFireTimes = {}
+	local turretTargets = {}
+	local turretThreads = {}
+
+	local function tableFind(tab, val)
+		for _, v in ipairs(tab) do
+			if v == val then return true end
+		end
+		return false
+	end
+
+	local function getOwnedTurrets()
+		local turrets = {}
+		for _, block in ipairs(store.blocks or {}) do
+			if block.Name == "camera_turret"
+				and block:GetAttribute("PlacedByUserId") == lplr.UserId
+				and block.Parent
+			then
+				table.insert(turrets, block)
+			end
+		end
+		return turrets
+	end
+
+	local function isTargetValid(ent, turretPos)
+		if not ent or not ent.Character then return false end
+		if not ent.RootPart or not ent.RootPart.Parent then return false end
+		if (ent.Character:GetAttribute("Health") or 0) <= 0 then return false end
+		if (turretPos - ent.RootPart.Position).Magnitude > (Distance and Distance.Value or 1000) then return false end
+		return true
+	end
+
+	local function getTarget(turret)
+		local turretPos = turret.Position
+		local locked = turretTargets[turret]
+		if isTargetValid(locked, turretPos) then
+			return locked
+		end
+
+		local ent = entitylib.EntityPosition({
+			Origin = turretPos,
+			Range = Distance and Distance.Value or 1000,
+			Part = "RootPart",
+			Players = Targets and Targets.Players.Enabled or true,
+			NPCs = Targets and Targets.NPCs.Enabled or true,
+			Sort = sortmethods[Sort and Sort.Value or 'Distance'] or sortmethods.Distance,
+		})
+
+		turretTargets[turret] = ent
+		return ent
+	end
+
+	local function fireTurret(turret)
+		if not turret or not turret.Parent then return end
+
+		local turretPos = turret.Position
+		local blockPos = bedwars.BlockController:getBlockPosition(turretPos)
+		local ent = getTarget(turret)
+		if not ent or not ent.RootPart then return end
+
+		local torso = ent.Character:FindFirstChild("UpperTorso")
+			or ent.Character:FindFirstChild("Torso")
+			or ent.RootPart
+		local targetPos = torso.Position
+
+		if Prediction and Prediction.Enabled then
+			local vel = ent.RootPart.Velocity or Vector3.zero
+			local travelTime = math.max((turretPos - targetPos).Magnitude / 300, 0.01)
+			targetPos = targetPos + Vector3.new(vel.X, vel.Y * 0.3, vel.Z) * travelTime
+		end
+
+		local lookDir = targetPos - turretPos
+		if lookDir.Magnitude < 0.1 then return end
+		lookDir = lookDir.Unit
+
+		local flatMag = Vector3.new(lookDir.X, 0, lookDir.Z).Magnitude
+		local yaw = math.atan2(-lookDir.X, -lookDir.Z)
+		local pitch = math.atan2(lookDir.Y, flatMag > 0 and flatMag or 0.001)
+
+		if AimTurretRemote then
+			pcall(function()
+				AimTurretRemote:FireServer({
+					angleX = math.deg(pitch),
+					angleY = math.deg(yaw),
+					turretBlockPos = blockPos,
+				})
+			end)
+		end
+
+		local now = tick()
+		if (now - (turretFireTimes[turret] or 0)) < 0.08 then return end
+		turretFireTimes[turret] = now
+
+		local fireId = httpService:GenerateGUID(false):sub(1, 8)
+		local shotId = httpService:GenerateGUID(false):sub(1, 8)
+		local targetChar = ent.Character
+		local shootOrigin = turretPos + lookDir * 2 + Vector3.new(0, 1, 0)
+		local velocity = lookDir * 300
+
+		task.spawn(function()
+			local firedId
+			if ProjectileFireRemote then
+				pcall(function()
+					firedId = ProjectileFireRemote:InvokeServer(
+						turret, nil, "turretBullet",
+						shootOrigin, turretPos, velocity,
+						fireId,
+						{ shotId = shotId, drawDurationSec = 0 },
+						workspace:GetServerTimeNow() - 0.045
+					)
+				end)
+			elseif RaycastTurretRemote then
+				pcall(function()
+					local targetDir = (targetPos - turretPos).Unit * 500
+					RaycastTurretRemote:FireServer(turret, turretPos + Vector3.new(0, 1, 0), targetDir, blockPos)
+				end)
+			end
+
+			if not firedId then
+				turretTargets[turret] = nil
+				return
+			end
+
+			task.wait(0.05)
+			if not targetChar or not targetChar.Parent then return end
+			if (targetChar:GetAttribute("Health") or 0) <= 0 then return end
+
+			if ProjectileHitRemote then
+				pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
+				task.wait(0.02)
+				if targetChar and targetChar.Parent and (targetChar:GetAttribute("Health") or 0) > 0 then
+					pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
+				end
+			end
+		end)
+	end
+
+	local function startTurretLoop(turret)
+		if turretThreads[turret] then return end
+
+		turretThreads[turret] = task.spawn(function()
+			while AutoVulcan.Enabled and turret and turret.Parent do
+				if entitylib.isAlive then
+					pcall(fireTurret, turret)
+				end
+				task.wait(0.08)
+			end
+			turretThreads[turret] = nil
+			turretTargets[turret] = nil
+			turretFireTimes[turret] = nil
+		end)
+	end
+
+	local function stopAllLoops()
+		for _, thread in pairs(turretThreads) do
+			pcall(task.cancel, thread)
+		end
+		table.clear(turretThreads)
+		table.clear(turretTargets)
+		table.clear(turretFireTimes)
+	end
+
+	AutoVulcan = vape.Categories.Kits:CreateModule({
+		Name = 'Auto Vulcan',
+		Tooltip = 'All turrets auto aim',
+		Function = function(callback)
+			if callback then
+				AutoVulcan:Clean(task.spawn(function()
+					while AutoVulcan.Enabled do
+						for _, turret in ipairs(getOwnedTurrets()) do
+							startTurretLoop(turret)
+						end
+						for turret, thread in pairs(turretThreads) do
+							if not turret.Parent then
+								pcall(task.cancel, thread)
+								turretThreads[turret] = nil
+								turretTargets[turret] = nil
+								turretFireTimes[turret] = nil
+							end
+						end
+						task.wait(1)
+					end
+				end))
+				AutoVulcan:Clean(stopAllLoops)
+			else
+				stopAllLoops()
+			end
+		end,
+	})
+
+	Targets = AutoVulcan:CreateTargets({
+		Players = true,
+		NPCs = true,
+		Walls = false,
+	})
+
+	Distance = AutoVulcan:CreateSlider({
+		Name = 'Distance',
+		Min = 1,
+		Max = 1000,
+		Default = 1000,
+		Suffix = function(val) return val == 1 and 'stud' or 'studs' end,
+	})
+
+	local methods = { 'Distance', 'Health' }
+	for i, _ in pairs(sortmethods) do
+		if not tableFind(methods, i) then
+			table.insert(methods, i)
+		end
+	end
+
+	Sort = AutoVulcan:CreateDropdown({
+		Name = 'Target mode',
+		List = methods,
+		Default = 'Distance',
+	})
+
+	Prediction = AutoVulcan:CreateToggle({
+		Name = 'Prediction',
+		Default = true,
+		Tooltip = 'Predicts target movement.',
+	})
+end)
+run(function()
+    local old
+    
+    vape.Categories.Blatant:CreateModule({
+        Name = 'Krystal Disabler',
+        Function = function(callback)
+            if callback then
+                bedwars.GlacialSkaterController:updateMomentum(9e9)
+                old = bedwars.GlacialSkaterController.updateMomentum
+                bedwars.GlacialSkaterController.updateMomentum = function(self)
+                    self.momentum = 9e9
+                    self.lastMomentumReport = 9e9
+                    bedwars.Client:Get('MomentumUpdate'):SendToServer({
+                        momentumValue = 9e9
+                    })
+                end
+                bedwars.GlacialSkaterController:updateMomentum()
+            else
+                bedwars.GlacialSkaterController.updateMomentum = old
+            end
+        end
+    })
+end)
+-- infinite sigrid
+
+run(function()
+    local SigridExploit
+    local Kit, Mount = 'elk_master', bedwars.Client:Get('ElkKitMounted')
+
+    SigridExploit = vape.Categories.Kits:CreateModule({
+        Name = 'Infinite Sigrid',
+        Tooltip = 'Lets you ride in the elk forever',
+        Function = function(call)
+            if call then
+                repeat
+                    if entitylib.isAlive then
+                        if store.equippedKit == Kit then
+                            Mount:SendToServer()
+                        end
+                    end
+                    task.wait()
+                until not SigridExploit.Enabled
+            end
+        end
+    })
+end)
 run(function()
 	local AutoEmber
 	local Targets
