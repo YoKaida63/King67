@@ -4735,7 +4735,41 @@ run(function()
 		Tooltip = 'Lets you sprint with a speed potion.'
 	})
 end)
+run(function()
+    local NoFall
 
+    NoFall = vape.Categories.Blatant:CreateModule({
+        Name = 'Render NoFall',
+        Function = function(callback)
+            if callback then
+                NoFall:Clean(runService.Heartbeat:Connect(function(dt)
+                    if entitylib.isAlive and bedwars.Knit.Controllers.MatchController:getMatchState() == 1 then
+                        local root = entitylib.character.RootPart
+                        local v = root.Velocity
+
+                        if root.Velocity.Y < -35 and not vape.Modules.Fly.Enabled then
+                            root.Velocity = Vector3.new(0,2.5,0)
+                            entitylib.character.Humanoid:ChangeState(Enum.HumanoidStateType.Landed)
+                            runService.PreRender:Wait()
+                            root.Velocity = v
+                        end
+                    end
+                end))
+
+                NoFall:Clean(entitylib.Events.LocalAdded:Connect(function(char)
+                    local animator = char.Humanoid:WaitForChild('Animator', 1)
+                    if animator and NoFall.Enabled and not vape.Modules.Fly.Enabled then
+                        task.wait(.5)
+                        NoFall:Toggle()
+                        NoFall:Toggle()
+                    end
+                end))
+            end
+        end,
+        Tooltip = 'Take no fall damage.'
+    })
+end)
+																																								
 -- King killaura 
 local Attacking
 run(function()
