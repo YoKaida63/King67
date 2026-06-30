@@ -37195,87 +37195,73 @@ end)
 run(function()
     local AntiLasso = vape.Categories.Combat:CreateModule({
         Name = 'AntiLasso',
+        Tooltip = 'Blocks server pulls via Network Ownership hijack',
         Function = function(callback)
             if callback then
-                local char = lplr.Character
-                if not char then return end
+                local heartbeatConn, preSimConn
                 
-                local connections = {}
-                
-                -- Function to detect if a physics object is a lasso pulling us
-                local function isLassoPhysics(desc)
-                    if desc:IsA("RopeConstraint") or desc:IsA("RodConstraint") or desc:IsA("LineForce") or desc:IsA("VectorForce") or desc:IsA("BodyVelocity") or desc:IsA("BodyPosition") then
-                        if desc.Name:lower():find("lasso") then return true end
-                        
-                        local att0 = desc.Attachment0
-                        local att1 = desc.Attachment1
-                        if att0 and att1 then
-                            local p0 = att0.Parent
-                            local p1 = att1.Parent
-                            if p0 and p1 then
-                                local isUs0 = char:IsAncestorOf(p0) or p0 == char
-                                local isUs1 = char:IsAncestorOf(p1) or p1 == char
-                                -- If it connects us to something outside of us, it's a lasso
-                                if (isUs0 and not isUs1) or (isUs1 and not isUs0) then
-                                    return true
+                -- 1. Destroy Tethers & Projectiles
+                heartbeatConn = runService.Heartbeat:Connect(function()
+                    if not AntiLasso.Enabled or not entitylib.isAlive then return end
+                    local char = entitylib.character.Character
+                    local hrp = entitylib.character.RootPart
+                    
+                    -- Destroy Constraints on your character
+                    for _, v in ipairs(char:GetDescendants()) do
+                        if v:IsA("RopeConstraint") or v:IsA("Beam") or v:IsA("RodConstraint") then
+                            pcall(function() v:Destroy() end)
+                        end
+                        if v:IsA("VectorForce") or v:IsA("AlignPosition") or v:IsA("BodyVelocity") or v:IsA("LineForce") then
+                            pcall(function() v:Destroy() end)
+                        end
+                    end
+                    
+                    -- Destroy Lasso Projectiles in Workspace connected to you
+                    for _, v in ipairs(workspace:GetDescendants()) do
+                        if v:IsA("BasePart") or v:IsA("Model") then
+                            local name = v.Name:lower()
+                            if name:find("lasso") or name:find("tether") or name:find("hook") then
+                                local isConnected = false
+                                for _, c in ipairs(v:GetDescendants()) do
+                                    if c:IsA("RopeConstraint") or c:IsA("Beam") then
+                                        if (c.Attachment0 and c.Attachment0:IsDescendantOf(char)) or 
+                                           (c.Attachment1 and c.Attachment1:IsDescendantOf(char)) then
+                                            isConnected = true
+                                            break
+                                        end
+                                    end
+                                end
+                                if isConnected then
+                                    pcall(function() v:Destroy() end)
                                 end
                             end
                         end
                     end
-                    return false
-                end
+                end)
                 
-                -- Aggressively destroy any lasso physics the moment it spawns on us
-                local function destroyLasso(desc)
-                    if not desc or not desc.Parent then return end
-                    if isLassoPhysics(desc) then
-                        task.defer(function()
-                            if desc and desc.Parent then
-                                pcall(function() desc:Destroy() end)
-                            end
-                        end)
-                    end
-                end
-                
-                table.insert(connections, char.DescendantAdded:Connect(destroyLasso))
-                for _, desc in pairs(char:GetDescendants()) do
-                    destroyLasso(desc)
-                end
-                
-                -- PreSimulation hook to steal Network Ownership and freeze pulls
-                local preSimConn = runService.PreSimulation:Connect(function()
-                    if not AntiLasso.Enabled then return end
-                    local root = entitylib.character and entitylib.character.RootPart
-                    if not root then return end
+                -- 2. Network Ownership Hijack & Physics Override (The Magic)
+                preSimConn = runService.PreSimulation:Connect(function(dt)
+                    if not AntiLasso.Enabled or not entitylib.isAlive then return end
+                    local hrp = entitylib.character.RootPart
+                    if not hrp then return end
                     
-                    -- 1. Force the server to let us control our own physics
-                    pcall(function() root:SetNetworkOwner(lplr) end)
+                    -- FORCE Network Ownership to LocalPlayer
+                    -- This prevents the server from applying physics forces (like dragging) to you
+                    pcall(function() hrp:SetNetworkOwner(lplr) end)
                     
-                    -- 2. Failsafe: If velocity spikes (being pulled) and a lasso exists, freeze movement
-                    local vel = root.AssemblyLinearVelocity
-                    if vel.Magnitude > 60 then
-                        local hasLasso = false
-                        for _, d in pairs(char:GetDescendants()) do
-                            if isLassoPhysics(d) then
-                                hasLasso = true
-                                break
-                            end
-                        end
-                        if hasLasso then
-                            -- Zero out horizontal velocity so you drop straight down instead of getting dragged
-                            root.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
-                        end
+                    -- Failsafe: If the server somehow still applies a massive pull force, zero it out
+                    local vel = hrp.AssemblyLinearVelocity
+                    local horizontalSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+                    if horizontalSpeed > 65 then -- 65 is higher than normal sprint/knockback
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
                     end
                 end)
-                table.insert(connections, preSimConn)
                 
                 AntiLasso:Clean(function()
-                    for _, conn in pairs(connections) do
-                        if conn then conn:Disconnect() end
-                    end
+                    if heartbeatConn then heartbeatConn:Disconnect() end
+                    if preSimConn then preSimConn:Disconnect() end
                 end)
             end
-        end,
-        Tooltip = 'Destroys lasso constraints, steals network ownership, and freezes pulls.'
+        end
     })
 end)
