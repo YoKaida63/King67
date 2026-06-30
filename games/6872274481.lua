@@ -37193,75 +37193,192 @@ run(function()
 end)
 
 run(function()
-    local AntiLasso = vape.Categories.Combat:CreateModule({
-        Name = 'AntiLasso',
-        Tooltip = 'Blocks server pulls via Network Ownership hijack',
+    local InfKA
+    local Targets
+    local Sort
+    local UpdateRate
+    local AngleSlider
+    local MaxTargets
+    local MouseDown
+    local Swing
+    local GUI
+    local BoxSwingColor
+    local BoxAttackColor
+    local Face
+    local FaceSpeed
+    local Limit
+    local LegitAura
+    local Attacking = false
+    local Boxes = {}
+    local AttackRemote = {FireServer = function() end}
+    task.spawn(function()
+        AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+    end)
+
+    local function flatAngle(selfpos, targetpos, facing)
+        local flat = (targetpos - selfpos) * Vector3.new(1, 0, 1)
+        if flat.Magnitude < 0.001 then return 0 end
+        return math.acos(math.clamp(facing:Dot(flat.Unit), -1, 1))
+    end
+
+    local function flatFacing(rootCFrame)
+        local lv = rootCFrame.LookVector * Vector3.new(1, 0, 1)
+        if lv.Magnitude < 0.001 then return rootCFrame.RightVector * Vector3.new(1, 0, 1) end
+        return lv.Unit
+    end
+
+    local function getAttackData()
+        if MouseDown and MouseDown.Enabled then
+            if not inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then return false end
+        end
+        if GUI and GUI.Enabled then
+            if bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then return false end
+        end
+        local sword = Limit and Limit.Enabled and store.hand or store.tools.sword
+        if not sword or not sword.tool then return false end
+        local meta = bedwars.ItemMeta[sword.tool.Name]
+        if not meta or not meta.sword then return false end
+        if Limit and Limit.Enabled then
+            if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
+        end
+        if LegitAura and LegitAura.Enabled then
+            if (tick() - bedwars.SwordController.lastSwing) > 0.5 then return false end
+        end
+        return sword, meta
+    end
+
+    InfKA = vape.Categories.Blatant:CreateModule({
+        Name = 'InfKA',
         Function = function(callback)
             if callback then
-                local heartbeatConn, preSimConn
+                Attacking = false
+                if inputService.TouchEnabled then
+                    pcall(function() lplr.PlayerGui.MobileUI['2'].Visible = Limit and Limit.Enabled end)
+                end
                 
-                -- 1. Destroy Tethers & Projectiles
-                heartbeatConn = runService.Heartbeat:Connect(function()
-                    if not AntiLasso.Enabled or not entitylib.isAlive then return end
-                    local char = entitylib.character.Character
-                    local hrp = entitylib.character.RootPart
-                    
-                    -- Destroy Constraints on your character
-                    for _, v in ipairs(char:GetDescendants()) do
-                        if v:IsA("RopeConstraint") or v:IsA("Beam") or v:IsA("RodConstraint") then
-                            pcall(function() v:Destroy() end)
-                        end
-                        if v:IsA("VectorForce") or v:IsA("AlignPosition") or v:IsA("BodyVelocity") or v:IsA("LineForce") then
-                            pcall(function() v:Destroy() end)
-                        end
-                    end
-                    
-                    -- Destroy Lasso Projectiles in Workspace connected to you
-                    for _, v in ipairs(workspace:GetDescendants()) do
-                        if v:IsA("BasePart") or v:IsA("Model") then
-                            local name = v.Name:lower()
-                            if name:find("lasso") or name:find("tether") or name:find("hook") then
-                                local isConnected = false
-                                for _, c in ipairs(v:GetDescendants()) do
-                                    if c:IsA("RopeConstraint") or c:IsA("Beam") then
-                                        if (c.Attachment0 and c.Attachment0:IsDescendantOf(char)) or 
-                                           (c.Attachment1 and c.Attachment1:IsDescendantOf(char)) then
-                                            isConnected = true
-                                            break
-                                        end
+                repeat
+                    local attackedLocal = {}
+                    local sword, meta = getAttackData()
+                    Attacking = false
+                    if sword then
+                        -- INFINITE RANGE: 99999 studs
+                        local plrs = entitylib.AllPosition({
+                            Range = 99999, 
+                            Wallcheck = Targets.Walls.Enabled or nil,
+                            Part = 'RootPart',
+                            Players = Targets.Players.Enabled,
+                            NPCs = Targets.NPCs.Enabled,
+                            Limit = MaxTargets.Value,
+                            Sort = sortmethods[Sort.Value]
+                        })
+                        if #plrs > 0 then
+                            switchItem(sword.tool, 0)
+                            local selfpos = entitylib.character.RootPart.Position
+                            local facing = flatFacing(entitylib.character.RootPart.CFrame)
+                            local maxAngle = math.rad(AngleSlider.Value) / 2
+                            for _, v in plrs do
+                                local delta = (v.RootPart.Position - selfpos)
+                                if flatAngle(selfpos, v.RootPart.Position, facing) > maxAngle then continue end
+                                table.insert(attackedLocal, { Entity = v, Check = BoxAttackColor })
+                                
+                                if not Attacking then
+                                    Attacking = true
+                                    local allowSwingAnim = not (Swing and Swing.Enabled) and not (LegitAura and LegitAura.Enabled)
+                                    if allowSwingAnim then
+                                        pcall(function() bedwars.SwordController:playSwordEffect(meta, false) end)
                                     end
                                 end
-                                if isConnected then
-                                    pcall(function() v:Destroy() end)
-                                end
+                                
+                                local actualRoot = v.Character.PrimaryPart
+                                if not actualRoot then continue end
+                                local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
+                                
+                                -- SPOOF POSITION: Sets your selfPosition to 2 studs in front of the target
+                                -- This bypasses the 14.4 stud limit and guarantees the hit registers
+                                local pos = actualRoot.Position - dir * 2 
+                                
+                                bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+                                
+                                AttackRemote:FireServer({
+                                    weapon = sword.tool,
+                                    chargedAttack = {chargeRatio = 0},
+                                    entityInstance = v.Character,
+                                    validate = {
+                                        raycast = {
+                                            cameraPosition = {value = pos},
+                                            cursorDirection = {value = dir}
+                                        },
+                                        targetPosition = {value = actualRoot.Position},
+                                        selfPosition = {value = pos}
+                                    }
+                                })
                             end
                         end
                     end
-                end)
-                
-                -- 2. Network Ownership Hijack & Physics Override (The Magic)
-                preSimConn = runService.PreSimulation:Connect(function(dt)
-                    if not AntiLasso.Enabled or not entitylib.isAlive then return end
-                    local hrp = entitylib.character.RootPart
-                    if not hrp then return end
                     
-                    -- FORCE Network Ownership to LocalPlayer
-                    -- This prevents the server from applying physics forces (like dragging) to you
-                    pcall(function() hrp:SetNetworkOwner(lplr) end)
+                    pcall(function()
+                        for i, v in Boxes do
+                            v.Adornee = attackedLocal[i] and attackedLocal[i].Entity.RootPart or nil
+                            if v.Adornee then
+                                v.Color3 = Color3.fromRGB(255, 255, 255)
+                                v.Transparency = 0.5
+                            end
+                        end
+                    end)
                     
-                    -- Failsafe: If the server somehow still applies a massive pull force, zero it out
-                    local vel = hrp.AssemblyLinearVelocity
-                    local horizontalSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
-                    if horizontalSpeed > 65 then -- 65 is higher than normal sprint/knockback
-                        hrp.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
+                    if Face and Face.Enabled and attackedLocal[1] then
+                        local vec = attackedLocal[1].Entity.RootPart.Position * Vector3.new(1, 0, 1)
+                        entitylib.character.RootPart.CFrame = CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(vec.X, entitylib.character.RootPart.Position.Y + 0.001, vec.Z))
                     end
-                end)
-                
-                AntiLasso:Clean(function()
-                    if heartbeatConn then heartbeatConn:Disconnect() end
-                    if preSimConn then preSimConn:Disconnect() end
-                end)
+                    
+                    task.wait(1 / UpdateRate.Value)
+                until not InfKA.Enabled
+            else
+                if inputService.TouchEnabled then
+                    pcall(function() lplr.PlayerGui.MobileUI['2'].Visible = true end)
+                end
+                Attacking = false
+                for _, v in Boxes do v.Adornee = nil end
+            end
+        end,
+        Tooltip = 'Infinite Range Killaura'
+    })
+
+    Targets = InfKA:CreateTargets({Players = true, NPCs = true})
+    local methods = {'Damage', 'Distance', 'Health'}
+    for i in sortmethods do if not table.find(methods, i) then table.insert(methods, i) end end
+    Sort = InfKA:CreateDropdown({Name = 'Target Mode', List = methods})
+    AngleSlider = InfKA:CreateSlider({Name = 'Max Angle', Min = 1, Max = 360, Default = 360})
+    UpdateRate = InfKA:CreateSlider({Name = 'Update Rate', Min = 1, Max = 120, Default = 60, Suffix = 'hz'})
+    MaxTargets = InfKA:CreateSlider({Name = 'Max Targets', Min = 1, Max = 10, Default = 5})
+    MouseDown = InfKA:CreateToggle({Name = 'Require Mouse Down'})
+    Swing = InfKA:CreateToggle({Name = 'No Swing'})
+    GUI = InfKA:CreateToggle({Name = 'GUI Check'})
+    Limit = InfKA:CreateToggle({Name = 'Limit to Items'})
+    LegitAura = InfKA:CreateToggle({Name = 'Swing Only'})
+    Face = InfKA:CreateToggle({Name = 'Face Target'})
+    FaceSpeed = InfKA:CreateSlider({Name = 'Face Speed', Min = 1, Max = 100, Default = 15})
+    
+    InfKA:CreateToggle({
+        Name = 'Show Target',
+        Function = function(callback)
+            if callback then
+                for i = 1, 10 do
+                    local box = Instance.new('BoxHandleAdornment')
+                    box.Adornee = nil
+                    box.AlwaysOnTop = true
+                    box.Size = Vector3.new(3, 5, 3)
+                    box.CFrame = CFrame.new(0, -0.5, 0)
+                    box.ZIndex = 0
+                    box.Parent = vape.gui
+                    Boxes[i] = box
+                end
+            else
+                for _, v in Boxes do v:Destroy() end
+                table.clear(Boxes)
             end
         end
     })
+    BoxSwingColor = InfKA:CreateColorSlider({Name = 'Target Color', Darker = true, DefaultHue = 0.6, DefaultOpacity = 0.5})
+    BoxAttackColor = InfKA:CreateColorSlider({Name = 'Attack Color', Darker = true, DefaultOpacity = 0.5})
 end)
