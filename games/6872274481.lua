@@ -37193,61 +37193,141 @@ run(function()
 end)
 
 run(function()
-local AntiLasso
-local oldGet
-AntiLasso = vape.Categories.Utility:CreateModule({
-Name = 'AntiLasso',
-Tooltip = 'Prevents you from being pulled by enemy lassos',
-Function = function(callback)
-if callback then
--- Hook the client remote getter to block lasso/tether/pull remotes
-oldGet = bedwars.Client.Get
-bedwars.Client.Get = function(self, remoteName)
-if AntiLasso.Enabled and remoteName then
-local lowerName = tostring(remoteName):lower()
-if lowerName:find("lasso") or lowerName:find("tether") or lowerName:find("pull") then
--- Return a dummy remote object that does nothing when the server tries to pull you
-return {
-SendToServer = function() end,
-FireServer = function() end,
-InvokeServer = function() return true end,
-CallServer = function() return true end,
-CallServerAsync = function() return {await = function() return true end} end
-}
-end
-end
-return oldGet(self, remoteName)
-end
+    local AntiLasso
+    local Mode
+    local Range
+    local Notify
+    local heartbeatConn
+    
+    AntiLasso = vape.Categories.Combat:CreateModule({
+        Name = 'AntiLasso',
+        Function = function(callback)
+            if callback then
+                heartbeatConn = runService.Heartbeat:Connect(function()
+                    if not entitylib.isAlive then return end
+                    local char = entitylib.character.Character
+                    local hrp = entitylib.character.RootPart
+                    if not hrp then return end
 
--- Destroy incoming lasso projectiles near your character
-AntiLasso:Clean(runService.Heartbeat:Connect(function()
-if not AntiLasso.Enabled then return end
-if not entitylib.isAlive then return end
-local myPos = entitylib.character.RootPart.Position
-for _, v in workspace:GetDescendants() do
-if v:IsA("BasePart") or v:IsA("Model") then
-local name = v.Name:lower()
-if name:find("lasso") or name:find("tether") then
--- Check if the projectile belongs to someone else
-local shooter = v:GetAttribute("ProjectileShooter") or v:GetAttribute("Shooter") or v:GetAttribute("OwnerId") or v:GetAttribute("PlacedByUserId")
-if shooter and shooter ~= lplr.UserId then
-local pos = v:IsA("Model") and v.PrimaryPart and v.PrimaryPart.Position or v.Position
--- Destroy the lasso if it gets within 20 studs of you
-if pos and (pos - myPos).Magnitude < 20 then
-pcall(function() v:Destroy() end)
-end
-end
-end
-end
-end
-end))
-else
--- Restore the original remote getter when disabled
-if oldGet then
-bedwars.Client.Get = oldGet
-oldGet = nil
-end
-end
-end
-})
+                    local myPos = hrp.Position
+                    local lassoShooterPos = nil
+                    local foundLasso = false
+
+                    -- 1. Destroy Tethers, Ropes, and Beams connecting you to the lasso user
+                    for _, obj in ipairs(char:GetDescendants()) do
+                        if obj:IsA("RopeConstraint") or obj:IsA("RodConstraint") or obj:IsA("Beam") then
+                            local name = obj.Name:lower()
+                            if name:find("lasso") or name:find("tether") or name:find("rope") or name:find("pull") or name:find("drag") then
+                                if obj.Attachment0 and obj.Attachment0.Parent then
+                                    lassoShooterPos = obj.Attachment0.Parent.Position
+                                elseif obj.Attachment1 and obj.Attachment1.Parent then
+                                    lassoShooterPos = obj.Attachment1.Parent.Position
+                                end
+                                pcall(function() obj:Destroy() end)
+                                foundLasso = true
+                            end
+                        end
+                    end
+
+                    -- 2. Destroy Physics Forces that pull your character
+                    for _, obj in ipairs(hrp:GetChildren()) do
+                        if obj:IsA("VectorForce") or obj:IsA("BodyVelocity") or obj:IsA("BodyPosition") or obj:IsA("AlignPosition") or obj:IsA("LineForce") then
+                            local name = obj.Name:lower()
+                            if name:find("lasso") or name:find("tether") or name:find("pull") or name:find("drag") then
+                                pcall(function() obj:Destroy() end)
+                                foundLasso = true
+                            end
+                        end
+                    end
+                    
+                    -- 3. Destroy Lasso Attachments on your RootPart
+                    for _, obj in ipairs(hrp:GetChildren()) do
+                        if obj:IsA("Attachment") then
+                            local name = obj.Name:lower()
+                            if name:find("lasso") or name:find("tether") then
+                                pcall(function() obj:Destroy() end)
+                                foundLasso = true
+                            end
+                        end
+                    end
+
+                    -- 4. Mode specific actions (Lag / Anti-Cheat effects)
+                    if foundLasso then
+                        if Notify and Notify.Enabled then
+                            vape:CreateNotification("AntiLasso", "Lasso tether destroyed!", 3, "info")
+                        end
+                        
+                        local mode = Mode and Mode.Value or "Desync"
+                        
+                        if mode == "Desync" then
+                            -- Teleport slightly to break server validation (Anti-Cheat/Lag effect)
+                            local randomOffset = Vector3.new(math.random(-3, 3), 0, math.random(-3, 3))
+                            hrp.CFrame = hrp.CFrame + randomOffset
+                            hrp.AssemblyLinearVelocity = Vector3.new(0, 50, 0) -- Pop up slightly
+                        elseif mode == "Repel" then
+                            -- Push away from the shooter
+                            if lassoShooterPos then
+                                local dir = (hrp.Position - lassoShooterPos).Unit
+                                hrp.AssemblyLinearVelocity = dir * 100 + Vector3.new(0, 30, 0)
+                            else
+                                hrp.AssemblyLinearVelocity = Vector3.new(0, 50, 0)
+                            end
+                        elseif mode == "Velocity" then
+                            -- Zero out velocity so you just drop straight down instead of being pulled
+                            hrp.AssemblyLinearVelocity = Vector3.zero
+                        end
+                    end
+
+                    -- 5. Destroy incoming lasso projectiles near you
+                    local rangeVal = Range and Range.Value or 20
+                    for _, v in workspace:GetDescendants() do
+                        if v:IsA("BasePart") or v:IsA("Model") then
+                            local name = v.Name:lower()
+                            if name:find("lasso") or name:find("tether") then
+                                local shooter = v:GetAttribute("ProjectileShooter") or v:GetAttribute("Shooter") or v:GetAttribute("OwnerId") or v:GetAttribute("PlacedByUserId")
+                                if shooter and shooter ~= lplr.UserId then
+                                    local pos = v:IsA("Model") and v.PrimaryPart and v.PrimaryPart.Position or v.Position
+                                    if pos and (pos - myPos).Magnitude < rangeVal then
+                                        pcall(function() v:Destroy() end)
+                                        if Notify and Notify.Enabled then
+                                            vape:CreateNotification("AntiLasso", "Destroyed incoming lasso!", 3, "info")
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+            else
+                if heartbeatConn then
+                    heartbeatConn:Disconnect()
+                    heartbeatConn = nil
+                end
+            end
+        end,
+        Tooltip = 'Prevents lasso pulls with desync/repel effects'
+    })
+
+    -- Additional Settings
+    Mode = AntiLasso:CreateDropdown({
+        Name = 'Mode',
+        List = {'Desync', 'Repel', 'Destroy', 'Velocity'},
+        Default = 'Desync',
+        Tooltip = 'Desync: Breaks server validation (Lag)\nRepel: Pushes you away\nDestroy: Just removes tether\nVelocity: Freezes you'
+    })
+
+    Range = AntiLasso:CreateSlider({
+        Name = 'Projectile Range',
+        Min = 5,
+        Max = 50,
+        Default = 20,
+        Suffix = ' studs',
+        Tooltip = 'Range to destroy incoming lasso projectiles before they hit'
+    })
+
+    Notify = AntiLasso:CreateToggle({
+        Name = 'Notify',
+        Default = true,
+        Tooltip = 'Show notifications when a lasso is blocked'
+    })
 end)
