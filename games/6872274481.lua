@@ -29565,6 +29565,102 @@ run(function()
 		Tooltip = 'Removes block textures but keeps colors'
 	})
 end)
+run(function()
+	local Optimize
+	local savedEffects = {}
+	
+	local function applyOptimizations()
+		-- Graphics optimizations (doesn't block features)
+		pcall(function()
+			settings():GetService("RenderSettings").QualityLevel = Enum.QualityLevel.Level01
+			settings():GetService("RenderSettings").MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+		end)
+		
+		-- Lighting optimizations
+		pcall(function()
+			lightingService.GlobalShadows = false
+			lightingService.FogEnd = 9e9
+			lightingService.Brightness = 0
+			
+			-- Save and disable effects (don't destroy)
+			for _, effect in {lightingService:FindFirstChildOfClass("Atmosphere"),
+							  lightingService:FindFirstChildOfClass("BlurEffect"),
+							  lightingService:FindFirstChildOfClass("BloomEffect"),
+							  lightingService:FindFirstChildOfClass("ColorCorrectionEffect"),
+							  lightingService:FindFirstChildOfClass("SunRaysEffect")} do
+				if effect then
+					savedEffects[effect] = effect.Enabled
+					effect.Enabled = false
+				end
+			end
+		end)
+		
+		-- Performance config (aggressive but reversible)
+		if getgenv().VapePerf then
+			getgenv().VapePerf.config.MAX_HEARTBEAT_FPS = 30
+			getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS = 60
+			getgenv().VapePerf.config.ENTITY_CACHE_DURATION = 0.1
+			getgenv().VapePerf.config.TARGET_CACHE_DURATION = 0.1
+		end
+		
+		-- Disable particles (save references)
+		task.spawn(function()
+			for _, obj in workspace:GetDescendants() do
+				if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") then
+					if obj.Enabled then
+						savedEffects[obj] = true
+						obj.Enabled = false
+					end
+				end
+			end
+		end)
+		
+		-- Terrain optimizations
+		pcall(function()
+			workspace.Terrain.Decoration = false
+			workspace.Terrain.WaterReflectance = 0
+			workspace.Terrain.WaterTransparency = 0
+		end)
+		
+		vape:CreateNotification("Optimize", "Max FPS mode enabled! All features still work.", 5)
+	end
+	
+	local function restoreOptimizations()
+		pcall(function()
+			settings():GetService("RenderSettings").QualityLevel = Enum.QualityLevel.Automatic
+		end)
+		
+		-- Restore effects
+		for effect, wasEnabled in pairs(savedEffects) do
+			if effect and effect.Parent then
+				effect.Enabled = wasEnabled
+			end
+		end
+		table.clear(savedEffects)
+		
+		if getgenv().VapePerf then
+			getgenv().VapePerf.config.MAX_HEARTBEAT_FPS = 60
+			getgenv().VapePerf.config.MAX_RENDERSTEPPED_FPS = 120
+			getgenv().VapePerf.config.ENTITY_CACHE_DURATION = 0.033
+			getgenv().VapePerf.config.TARGET_CACHE_DURATION = 0.033
+		end
+		
+		vape:CreateNotification("Optimize", "Optimizations disabled.", 3)
+	end
+	
+	Optimize = vape.Categories.BoostFPS:CreateModule({
+		Name = 'Optimize',
+		Function = function(callback)
+			if callback then
+				applyOptimizations()
+			else
+				restoreOptimizations()
+			end
+		end,
+		Tooltip = 'Maximum FPS optimization - All features remain functional'
+	})
+end)
+	
 
 run(function()
 	local FishermanESP
