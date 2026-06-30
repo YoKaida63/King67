@@ -37195,139 +37195,112 @@ end)
 run(function()
     local AntiLasso
     local Mode
-    local Range
     local Notify
     local heartbeatConn
+    local preSimConn
+    local lastSafeCFrame = nil
+    local isLassoed = false
+    local lassoedTime = 0
     
     AntiLasso = vape.Categories.Combat:CreateModule({
         Name = 'AntiLasso',
         Function = function(callback)
             if callback then
+                isLassoed = false
+                lastSafeCFrame = nil
+                lassoedTime = 0
+                
+                -- 1. Detect Lasso & Destroy Constraints
                 heartbeatConn = runService.Heartbeat:Connect(function()
                     if not entitylib.isAlive then return end
                     local char = entitylib.character.Character
                     local hrp = entitylib.character.RootPart
                     if not hrp then return end
-
-                    local myPos = hrp.Position
-                    local lassoShooterPos = nil
+                    
                     local foundLasso = false
-
-                    -- 1. Destroy Tethers, Ropes, and Beams connecting you to the lasso user
+                    
                     for _, obj in ipairs(char:GetDescendants()) do
-                        if obj:IsA("RopeConstraint") or obj:IsA("RodConstraint") or obj:IsA("Beam") then
-                            local name = obj.Name:lower()
-                            if name:find("lasso") or name:find("tether") or name:find("rope") or name:find("pull") or name:find("drag") then
-                                if obj.Attachment0 and obj.Attachment0.Parent then
-                                    lassoShooterPos = obj.Attachment0.Parent.Position
-                                elseif obj.Attachment1 and obj.Attachment1.Parent then
-                                    lassoShooterPos = obj.Attachment1.Parent.Position
-                                end
-                                pcall(function() obj:Destroy() end)
-                                foundLasso = true
-                            end
-                        end
-                    end
-
-                    -- 2. Destroy Physics Forces that pull your character
-                    for _, obj in ipairs(hrp:GetChildren()) do
-                        if obj:IsA("VectorForce") or obj:IsA("BodyVelocity") or obj:IsA("BodyPosition") or obj:IsA("AlignPosition") or obj:IsA("LineForce") then
-                            local name = obj.Name:lower()
-                            if name:find("lasso") or name:find("tether") or name:find("pull") or name:find("drag") then
+                        local name = obj.Name:lower()
+                        if name:find("lasso") or name:find("tether") or name:find("rope") or name:find("pull") then
+                            if obj:IsA("RopeConstraint") or obj:IsA("RodConstraint") or obj:IsA("Beam") or obj:IsA("VectorForce") or obj:IsA("BodyVelocity") or obj:IsA("BodyPosition") or obj:IsA("AlignPosition") or obj:IsA("LineForce") or obj:IsA("Attachment") then
                                 pcall(function() obj:Destroy() end)
                                 foundLasso = true
                             end
                         end
                     end
                     
-                    -- 3. Destroy Lasso Attachments on your RootPart
-                    for _, obj in ipairs(hrp:GetChildren()) do
-                        if obj:IsA("Attachment") then
-                            local name = obj.Name:lower()
-                            if name:find("lasso") or name:find("tether") then
-                                pcall(function() obj:Destroy() end)
-                                foundLasso = true
-                            end
-                        end
+                    if char:GetAttribute("Lassoed") or char:GetAttribute("Tethered") or char:GetAttribute("IsLassoed") or char:GetAttribute("IsTethered") then
+                        foundLasso = true
                     end
-
-                    -- 4. Mode specific actions (Lag / Anti-Cheat effects)
+                    
                     if foundLasso then
-                        if Notify and Notify.Enabled then
-                            vape:CreateNotification("AntiLasso", "Lasso tether destroyed!", 3, "info")
-                        end
-                        
-                        local mode = Mode and Mode.Value or "Desync"
-                        
-                        if mode == "Desync" then
-                            -- Teleport slightly to break server validation (Anti-Cheat/Lag effect)
-                            local randomOffset = Vector3.new(math.random(-3, 3), 0, math.random(-3, 3))
-                            hrp.CFrame = hrp.CFrame + randomOffset
-                            hrp.AssemblyLinearVelocity = Vector3.new(0, 50, 0) -- Pop up slightly
-                        elseif mode == "Repel" then
-                            -- Push away from the shooter
-                            if lassoShooterPos then
-                                local dir = (hrp.Position - lassoShooterPos).Unit
-                                hrp.AssemblyLinearVelocity = dir * 100 + Vector3.new(0, 30, 0)
-                            else
-                                hrp.AssemblyLinearVelocity = Vector3.new(0, 50, 0)
+                        if not isLassoed then
+                            isLassoed = true
+                            lassoedTime = tick()
+                            if Notify and Notify.Enabled then
+                                vape:CreateNotification("AntiLasso", "Lasso detected! Blocking pull...", 3, "info")
                             end
-                        elseif mode == "Velocity" then
-                            -- Zero out velocity so you just drop straight down instead of being pulled
-                            hrp.AssemblyLinearVelocity = Vector3.zero
                         end
-                    end
-
-                    -- 5. Destroy incoming lasso projectiles near you
-                    local rangeVal = Range and Range.Value or 20
-                    for _, v in workspace:GetDescendants() do
-                        if v:IsA("BasePart") or v:IsA("Model") then
-                            local name = v.Name:lower()
-                            if name:find("lasso") or name:find("tether") then
-                                local shooter = v:GetAttribute("ProjectileShooter") or v:GetAttribute("Shooter") or v:GetAttribute("OwnerId") or v:GetAttribute("PlacedByUserId")
-                                if shooter and shooter ~= lplr.UserId then
-                                    local pos = v:IsA("Model") and v.PrimaryPart and v.PrimaryPart.Position or v.Position
-                                    if pos and (pos - myPos).Magnitude < rangeVal then
-                                        pcall(function() v:Destroy() end)
-                                        if Notify and Notify.Enabled then
-                                            vape:CreateNotification("AntiLasso", "Destroyed incoming lasso!", 3, "info")
-                                        end
-                                    end
-                                end
-                            end
+                    else
+                        if isLassoed and (tick() - lassoedTime > 0.5) then
+                            isLassoed = false
                         end
                     end
                 end)
+                
+                -- 2. Override Physics to Prevent Pulling (The Magic)
+                preSimConn = runService.PreSimulation:Connect(function(dt)
+                    if not entitylib.isAlive then return end
+                    local hrp = entitylib.character.RootPart
+                    if not hrp then return end
+                    
+                    if isLassoed then
+                        local mode = Mode and Mode.Value or "Freeze"
+                        
+                        if mode == "Freeze" then
+                            -- FREEZE: Locks your X and Z coordinates to where you were standing.
+                            -- The server will try to pull you, but your client will forcefully snap you back.
+                            -- This causes a massive Desync that breaks the server's lasso logic.
+                            hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
+                            if lastSafeCFrame then
+                                local currentCF = hrp.CFrame
+                                hrp.CFrame = CFrame.new(lastSafeCFrame.X, currentCF.Y, lastSafeCFrame.Z) * CFrame.Angles(0, currentCF:ToEulerAnglesYXZ(), 0)
+                            end
+                        elseif mode == "Repel" then
+                            -- REPEL: Kills the pull velocity and tries to take Network Ownership.
+                            hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity * 0.1
+                            pcall(function() workspace:SetNetworkOwner(hrp, lplr) end)
+                        elseif mode == "Desync" then
+                            -- DESYNC: Rapidly jitters your position to break the server's interpolation.
+                            local offset = Vector3.new(math.random(-15, 15)/10, 0, math.random(-15, 15)/10)
+                            hrp.CFrame = hrp.CFrame + offset
+                        end
+                    else
+                        -- Save your safe position when NOT lassoed
+                        lastSafeCFrame = hrp.CFrame
+                    end
+                end)
+                
             else
-                if heartbeatConn then
-                    heartbeatConn:Disconnect()
-                    heartbeatConn = nil
-                end
+                if heartbeatConn then heartbeatConn:Disconnect() heartbeatConn = nil end
+                if preSimConn then preSimConn:Disconnect() preSimConn = nil end
+                isLassoed = false
+                lastSafeCFrame = nil
             end
         end,
-        Tooltip = 'Prevents lasso pulls with desync/repel effects'
+        Tooltip = 'Prevents lasso pulls by overriding client physics'
     })
-
-    -- Additional Settings
+    
     Mode = AntiLasso:CreateDropdown({
         Name = 'Mode',
-        List = {'Desync', 'Repel', 'Destroy', 'Velocity'},
-        Default = 'Desync',
-        Tooltip = 'Desync: Breaks server validation (Lag)\nRepel: Pushes you away\nDestroy: Just removes tether\nVelocity: Freezes you'
+        List = {'Freeze', 'Repel', 'Desync'},
+        Default = 'Freeze',
+        Tooltip = 'Freeze: Locks your X/Z position (Best)\nRepel: Kills pull velocity\nDesync: Jitters to break server calc'
     })
-
-    Range = AntiLasso:CreateSlider({
-        Name = 'Projectile Range',
-        Min = 5,
-        Max = 50,
-        Default = 20,
-        Suffix = ' studs',
-        Tooltip = 'Range to destroy incoming lasso projectiles before they hit'
-    })
-
+    
     Notify = AntiLasso:CreateToggle({
         Name = 'Notify',
         Default = true,
-        Tooltip = 'Show notifications when a lasso is blocked'
+        Tooltip = 'Show notification when lasso is blocked'
     })
 end)
