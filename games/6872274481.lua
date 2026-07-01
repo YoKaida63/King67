@@ -33060,5 +33060,32 @@ run(function()
     -- UI Elements
     Range = Breaker:CreateSlider({Name = 'Break range', Min = 1, Max = 30, Default = 30, Suffix = function(val) return val == 1 and 'stud' or 'studs' end})
     BreakSpeed = Breaker:CreateSlider({Name = 'Break speed', Min = 0, Max = 0.3, Default = 0.25, Decimal = 100, Suffix = 'seconds'})
-    UpdateRate = Breaker:Create
+    UpdateRate = Breaker:CreateSlider({Name = 'Update rate', Min = 1, Max = 120, Default = 60, Suffix = 'hz'})
+    BreakerAngle = Breaker:CreateSlider({Name = 'Max angle', Min = 1, Max = 360, Default = 120})
 
+    Bed = Breaker:CreateToggle({Name = 'Break Bed', Default = true})
+    LuckyBlock = Breaker:CreateToggle({Name = 'Break Lucky Block', Default = true})
+    IronOre = Breaker:CreateToggle({Name = 'Break Iron Ore', Default = true})
+    Snow = Breaker:CreateToggle({Name = 'Break Snow', Default = false})
+    Tesla = Breaker:CreateToggle({Name = 'Break Tesla', Default = true})
+    Hive = Breaker:CreateToggle({Name = 'Break Hive', Default = true})
+    Pinata = Breaker:CreateToggle({Name = 'Break Pinata', Default = true})
+    Crops = Breaker:CreateToggle({Name = 'Break Crops', Default = true})
+
+    Effect = Breaker:CreateToggle({Name = 'Show Healthbar & Effects', Function = function(callback) if CustomHealth.Object then CustomHealth.Object.Visible = callback end end, Default = true})
+    CustomHealth = Breaker:CreateToggle({Name = 'Custom Healthbar', Default = true, Darker = true})
+    Animation = Breaker:CreateToggle({Name = 'Animation'})
+    
+    -- Kept exactly as requested
+    SelfBreak = Breaker:CreateToggle({Name = 'Self Break'})
+    LimitItem = Breaker:CreateToggle({Name = 'Limit to items', Tooltip = 'Only breaks when tools are held'})
+    
+    InstantBreak = Breaker:CreateToggle({Name = 'Instant Break'})
+    AutoTool = Breaker:CreateToggle({Name = 'Auto Tool', Tooltip = 'Automatically switches to the best tool for breaking blocks'})
+    MouseDown = Breaker:CreateToggle({Name = 'Require Mouse Down', Tooltip = 'Only breaks blocks when holding left click'})
+    YetiBreaker = Breaker:CreateToggle({Name = 'Yeti Breaker', Tooltip = 'Focuses on frozen blocks'})
+    RagnarBreaker = Breaker:CreateToggle({Name = 'Ragnar Breaker', Tooltip = 'Activates rage when breaking'})
+    ShowPath = Breaker:CreateToggle({Name = 'Show Path'})
+    BreakClosest = Breaker:CreateToggle({Name = 'Break Closest'})
+    BlockHighlight = Breaker:CreateToggle({Name = 'Block Highlight'})
+end)
