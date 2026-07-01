@@ -33619,3 +33619,115 @@ end)
     end
 end)
 
+run(function()
+    local TextureRemover
+    local originalProps = {}
+    local processed = {}
+
+    local function removeTextures(block)
+        if not block or not block.Parent or processed[block] then return end
+        if not block:IsA("BasePart") then return end
+
+        -- Save original properties
+        originalProps[block] = {
+            Material = block.Material,
+            TextureID = block:IsA("MeshPart") and block.TextureID or nil,
+            Textures = {}
+        }
+
+        -- Save and remove all Texture/Decal children
+        for _, child in block:GetChildren() do
+            if child:IsA("Texture") or child:IsA("Decal") then
+                table.insert(originalProps[block].Textures, child)
+                child.Parent = nil -- Remove from block but keep reference
+            end
+        end
+
+        -- Change to SmoothPlastic to remove any remaining detail
+        block.Material = Enum.Material.SmoothPlastic
+
+        -- Clear MeshPart TextureID
+        if block:IsA("MeshPart") then
+            block.TextureID = ""
+        end
+
+        processed[block] = true
+    end
+
+    local function restoreBlock(block)
+        if not block or not block.Parent then
+            originalProps[block] = nil
+            processed[block] = nil
+            return
+        end
+        local props = originalProps[block]
+        if not props then return end
+
+        -- Restore material
+        block.Material = props.Material or Enum.Material.Plastic
+
+        -- Restore MeshPart TextureID
+        if props.TextureID and block:IsA("MeshPart") then
+            block.TextureID = props.TextureID
+        end
+
+        -- Restore all textures
+        for _, tex in props.Textures do
+            if tex then
+                tex.Parent = block
+            end
+        end
+
+        originalProps[block] = nil
+        processed[block] = nil
+    end
+
+    local function isMapBlock(obj)
+        if not obj:IsA("BasePart") then return false end
+        local name = obj.Name:lower()
+        return name:find("wool") or name:find("clay") or name:find("wood") or
+            name:find("stone") or name:find("glass") or name:find("plank") or
+            name:find("bed") or name:find("obsidian") or name:find("sand") or
+            name:find("end") or name:find("tnt") or name:find("barrier") or
+            name:find("concrete") or name:find("_block") or name:find("iron") or
+            name:find("gold") or name:find("diamond") or name:find("emerald") or
+            name:find("lucky") or name:find("crop") or name:find("snow") or
+            name:find("moss") or name:find("cobble") or name:find("andesite")
+    end
+
+    TextureRemover = vape.Categories.BoostFPS:CreateModule({
+        Name = 'TextureRemover',
+        Function = function(callback)
+            if callback then
+                -- Process all existing blocks
+                task.spawn(function()
+                    for _, obj in workspace:GetDescendants() do
+                        if isMapBlock(obj) then
+                            removeTextures(obj)
+                        end
+                    end
+                end)
+
+                -- Hook new blocks
+                TextureRemover:Clean(workspace.DescendantAdded:Connect(function(obj)
+                    if isMapBlock(obj) then
+                        task.defer(function()
+                            if obj and obj.Parent then
+                                removeTextures(obj)
+                            end
+                        end)
+                    end
+                end))
+            else
+                -- Restore all blocks
+                for block, _ in pairs(processed) do
+                    restoreBlock(block)
+                end
+                table.clear(originalProps)
+                table.clear(processed)
+            end
+        end,
+        Tooltip = 'Removes all block textures but keeps original colors (flat color look)'
+    })
+end)
+
