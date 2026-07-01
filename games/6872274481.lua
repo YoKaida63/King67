@@ -15500,7 +15500,6 @@ run(function()
     local customlist, parts = {}, {}
     
     local function customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
-        --if block:GetAttribute('NoHealthbar') then return end
         if not self.healthbarPart or not self.healthbarBlockRef or self.healthbarBlockRef.blockPosition ~= blockRef.blockPosition then
             self.healthbarMaid:DoCleaning()
             self.healthbarBlockRef = blockRef
@@ -15602,7 +15601,7 @@ run(function()
     local hit = 0
     
     local function getMousePosition()
-    	local suc, mouseinfo = pcall(function()
+        local suc, mouseinfo = pcall(function()
             return bedwars.BlockBreaker.clientManager:getBlockSelector():getMouseInfo(0)
         end)
     
@@ -15681,21 +15680,21 @@ run(function()
                 local luckyblock = collection('LuckyBlock', Breaker)
                 local ironores = collection('iron_ore_mesh_block', Breaker)
                 local teslas = collection('tesla-trap', Breaker, function(tab, obj)
-    				task.delay(0.1, function()
-    					local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
-    					if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
-    						table.insert(tab, obj)
-    					end
-    				end)
-    			end)
-    			local hives = collection('beehive', Breaker, function(tab, obj)
-    				task.delay(0.1, function()
-    					local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
-    					if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
-    						table.insert(tab, obj)
-    					end
-    				end)
-    			end)
+                    task.delay(0.1, function()
+                        local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
+                        if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
+                            table.insert(tab, obj)
+                        end
+                    end)
+                end)
+                local hives = collection('beehive', Breaker, function(tab, obj)
+                    task.delay(0.1, function()
+                        local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
+                        if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
+                            table.insert(tab, obj)
+                        end
+                    end)
+                end)
                 
                 customlist = collection('block', Breaker, function(tab, obj)
                     if table.find(Custom.ListEnabled, obj.Name) then
@@ -15731,10 +15730,22 @@ run(function()
         end,
         Tooltip = 'Break blocks around you automatically'
     })
+
+    -- ==========================================
+    -- FIXED THE CRASH HERE
+    -- ==========================================
     local methods = {}
-    for i in breakmethods do
-        table.insert(methods, i)
+    if breakmethods then
+        for i in pairs(breakmethods) do
+            table.insert(methods, i)
+        end
+    else
+        -- Fallback if breakmethods is missing from the script
+        table.insert(methods, 'Closest')
+        table.insert(methods, 'Mouse')
     end
+    -- ==========================================
+
     Mode = Breaker:CreateDropdown({
         Name = 'Break mode',
         List = methods,
@@ -15787,12 +15798,12 @@ run(function()
         Default = true
     })
     Tesla = Breaker:CreateToggle({
-    	Name = 'Break Tesla',
-    	Default = true,
+        Name = 'Break Tesla',
+        Default = true,
     })
     Hive = Breaker:CreateToggle({
-    	Name = 'Break Hive',
-    	Default = true,
+        Name = 'Break Hive',
+        Default = true,
     })
     LuckyBlock = Breaker:CreateToggle({
         Name = 'Break Lucky Block',
@@ -15824,11 +15835,13 @@ run(function()
         Name = 'Break through blocks', 
         Tooltip = 'Ignores blocks around bed defense, and check if the server validates where ur breaking'
     })
-    Closet =  Breaker:CreateToggle({
-        Name = 'Closet break',
-        Tooltip = 'Uses ur mouse\'s position to get the closet block to you',
+    Closet = Breaker:CreateToggle({
+        Name = 'Closest break',
+        Tooltip = 'Uses ur mouse\'s position to get the closest block to you',
         Function = function(callback)
-            Mode.Object.Visible = not callback
+            if Mode and Mode.Object then
+                Mode.Object.Visible = not callback
+            end
         end
     })
     LimitItem = Breaker:CreateToggle({
