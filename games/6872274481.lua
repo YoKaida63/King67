@@ -33623,14 +33623,45 @@ run(function()
     local TextureRemover
     local originalProps = {}
     local processed = {}
+    
+    -- Color fallback dictionary for blocks that rely on textures for their color
+    local blockColors = {
+        ["wool_red"] = Color3.fromRGB(255, 50, 50), ["wool_blue"] = Color3.fromRGB(50, 100, 255),
+        ["wool_green"] = Color3.fromRGB(50, 255, 50), ["wool_yellow"] = Color3.fromRGB(255, 255, 50),
+        ["wool_orange"] = Color3.fromRGB(255, 150, 50), ["wool_purple"] = Color3.fromRGB(180, 50, 255),
+        ["wool_pink"] = Color3.fromRGB(255, 100, 200), ["wool_black"] = Color3.fromRGB(50, 50, 50),
+        ["wool_white"] = Color3.fromRGB(255, 255, 255), ["wool_cyan"] = Color3.fromRGB(50, 255, 255),
+        ["wool_lime"] = Color3.fromRGB(150, 255, 50), ["wool_brown"] = Color3.fromRGB(150, 75, 0),
+        ["wool_gray"] = Color3.fromRGB(150, 150, 150), ["wool_light_blue"] = Color3.fromRGB(100, 200, 255),
+        ["clay_white"] = Color3.fromRGB(255, 255, 255), ["clay_orange"] = Color3.fromRGB(255, 150, 50),
+        ["clay_light_brown"] = Color3.fromRGB(200, 170, 120), ["clay"] = Color3.fromRGB(220, 180, 140),
+        ["wood_plank_spruce"] = Color3.fromRGB(222, 184, 135), ["wood"] = Color3.fromRGB(180, 140, 100),
+        ["stone"] = Color3.fromRGB(150, 150, 150), ["andesite"] = Color3.fromRGB(150, 150, 150),
+        ["cobblestone"] = Color3.fromRGB(150, 150, 150), ["obsidian"] = Color3.fromRGB(50, 30, 80),
+        ["bedrock"] = Color3.fromRGB(80, 80, 80), ["tnt"] = Color3.fromRGB(255, 50, 50),
+        ["sandstone"] = Color3.fromRGB(220, 200, 150), ["sand"] = Color3.fromRGB(220, 200, 150),
+        ["bed"] = Color3.fromRGB(200, 50, 50), ["concrete"] = Color3.fromRGB(180, 180, 180),
+        ["grass"] = Color3.fromRGB(50, 255, 50), ["moss_block"] = Color3.fromRGB(50, 255, 50),
+        ["iron_ore_mesh_block"] = Color3.fromRGB(200, 200, 200), ["lucky_block"] = Color3.fromRGB(255, 200, 50)
+    }
+
+    local function getBlockColor(blockName)
+        if blockColors[blockName] then return blockColors[blockName] end
+        local lowerName = blockName:lower()
+        for name, color in pairs(blockColors) do
+            if lowerName:find(name, 1, true) then return color end
+        end
+        return nil -- Return nil if not found so it keeps its original base color
+    end
 
     local function removeTextures(block)
         if not block or not block.Parent or processed[block] then return end
         if not block:IsA("BasePart") then return end
 
-        -- Save original properties
+        -- FIX 1: Save the original Color property
         originalProps[block] = {
             Material = block.Material,
+            Color = block.Color, 
             TextureID = block:IsA("MeshPart") and block.TextureID or nil,
             Textures = {}
         }
@@ -33639,12 +33670,18 @@ run(function()
         for _, child in block:GetChildren() do
             if child:IsA("Texture") or child:IsA("Decal") then
                 table.insert(originalProps[block].Textures, child)
-                child.Parent = nil -- Remove from block but keep reference
+                child.Parent = nil 
             end
         end
 
-        -- Change to SmoothPlastic to remove any remaining detail
+        -- Change to SmoothPlastic to remove detail
         block.Material = Enum.Material.SmoothPlastic
+
+        -- FIX 2: Apply the correct color based on the block's name
+        local correctColor = getBlockColor(block.Name)
+        if correctColor then
+            block.Color = correctColor
+        end
 
         -- Clear MeshPart TextureID
         if block:IsA("MeshPart") then
@@ -33665,6 +33702,9 @@ run(function()
 
         -- Restore material
         block.Material = props.Material or Enum.Material.Plastic
+        
+        -- FIX 3: Restore the original Color property
+        block.Color = props.Color or Color3.fromRGB(255, 255, 255)
 
         -- Restore MeshPart TextureID
         if props.TextureID and block:IsA("MeshPart") then
@@ -33699,7 +33739,6 @@ run(function()
         Name = 'TextureRemover',
         Function = function(callback)
             if callback then
-                -- Process all existing blocks
                 task.spawn(function()
                     for _, obj in workspace:GetDescendants() do
                         if isMapBlock(obj) then
@@ -33708,7 +33747,6 @@ run(function()
                     end
                 end)
 
-                -- Hook new blocks
                 TextureRemover:Clean(workspace.DescendantAdded:Connect(function(obj)
                     if isMapBlock(obj) then
                         task.defer(function()
@@ -33719,7 +33757,6 @@ run(function()
                     end
                 end))
             else
-                -- Restore all blocks
                 for block, _ in pairs(processed) do
                     restoreBlock(block)
                 end
@@ -33730,4 +33767,3 @@ run(function()
         Tooltip = 'Removes all block textures but keeps original colors (flat color look)'
     })
 end)
-
