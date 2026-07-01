@@ -33627,31 +33627,86 @@ run(function()
     
     local originalData = {} 
 
+    -- Color lookup for blocks that lose their color
+    local blockColors = {
+        ["wool_white"] = Color3.fromRGB(255, 255, 255),
+        ["wool_red"] = Color3.fromRGB(255, 50, 50),
+        ["wool_green"] = Color3.fromRGB(50, 255, 50),
+        ["wool_blue"] = Color3.fromRGB(50, 100, 255),
+        ["wool_yellow"] = Color3.fromRGB(255, 255, 50),
+        ["wool_orange"] = Color3.fromRGB(255, 150, 50),
+        ["wool_purple"] = Color3.fromRGB(180, 50, 255),
+        ["wool_pink"] = Color3.fromRGB(255, 100, 200),
+        ["wool_black"] = Color3.fromRGB(50, 50, 50),
+        ["wool_cyan"] = Color3.fromRGB(50, 255, 255),
+        ["wool_lime"] = Color3.fromRGB(150, 255, 50),
+        ["wool_brown"] = Color3.fromRGB(150, 75, 0),
+        ["wool_gray"] = Color3.fromRGB(150, 150, 150),
+        ["wood"] = Color3.fromRGB(180, 140, 100),
+        ["stone"] = Color3.fromRGB(150, 150, 150),
+        ["cobblestone"] = Color3.fromRGB(150, 150, 150),
+        ["obsidian"] = Color3.fromRGB(50, 30, 80),
+        ["sand"] = Color3.fromRGB(220, 200, 150),
+        ["grass"] = Color3.fromRGB(50, 255, 50),
+        ["bed"] = Color3.fromRGB(200, 50, 50),
+    }
+
+    local function getBlockColor(blockName)
+        if blockColors[blockName] then 
+            return blockColors[blockName] 
+        end
+        local lowerName = blockName:lower()
+        for name, color in pairs(blockColors) do
+            if lowerName:find(name, 1, true) then
+                return color
+            end
+        end
+        return nil
+    end
+
     local function processPart(part)
         if not part or not part.Parent or originalData[part] then return end
         if not part:IsA("BasePart") then return end
 
-        -- Save original data so we can restore it when you turn it off
+        -- Save original data
         originalData[part] = {
             Material = part.Material,
             MaterialVariant = part.MaterialVariant,
-            TextureID = part:IsA("MeshPart") and part.TextureID or nil
+            TextureID = part:IsA("MeshPart") and part.TextureID or nil,
+            Color = part.Color  -- SAVE THE COLOR!
         }
 
-        -- 1. Remove the custom texture pack overlay (The "grid" on wool blocks)
+        -- Extract color from MaterialVariant before removing it
+        local extractedColor = nil
+        if part.MaterialVariant and part.MaterialVariant ~= "" then
+            -- Try to get color from the part's current appearance
+            extractedColor = part.Color
+        end
+
+        -- 1. Remove the custom texture pack overlay
         if part.MaterialVariant ~= "" then
             part.MaterialVariant = ""
         end
 
-        -- 2. Force smooth material to remove built-in patterns (fabric, brick, etc.)
+        -- 2. Force smooth material to remove built-in patterns
         part.Material = Enum.Material.SmoothPlastic
 
-        -- 3. Remove Mesh textures (This fixes swords and player avatars)
+        -- 3. Remove Mesh textures (swords, avatars)
         if part:IsA("MeshPart") and part.TextureID ~= "" then
             part.TextureID = ""
         end
 
-        -- 4. Hide any Decal/Texture children (Saves them to a folder instead of deleting)
+        -- 4. Apply color: Use extracted color OR lookup from dictionary
+        if extractedColor then
+            part.Color = extractedColor
+        else
+            local dictColor = getBlockColor(part.Name)
+            if dictColor then
+                part.Color = dictColor
+            end
+        end
+
+        -- 5. Hide any Decal/Texture children
         for _, child in part:GetChildren() do
             if child:IsA("Texture") or child:IsA("Decal") then
                 child.Parent = storage
@@ -33664,9 +33719,10 @@ run(function()
         local data = originalData[part]
         if not data then return end
 
-        -- Restore everything exactly how it was
+        -- Restore everything
         part.Material = data.Material
         part.MaterialVariant = data.MaterialVariant
+        part.Color = data.Color  -- RESTORE ORIGINAL COLOR
         if part:IsA("MeshPart") and data.TextureID then
             part.TextureID = data.TextureID
         end
@@ -33677,14 +33733,14 @@ run(function()
         Name = 'NoTexturePatterns',
         Function = function(callback)
             if callback then
-                -- Process all existing parts (blocks, swords, avatars)
+                -- Process all existing parts
                 task.spawn(function()
                     for _, obj in workspace:GetDescendants() do
                         processPart(obj)
                     end
                 end)
                 
-                -- Hook new parts placed or spawned during the game
+                -- Hook new parts
                 NoTexturePatterns:Clean(workspace.DescendantAdded:Connect(function(obj)
                     if obj:IsA("BasePart") then
                         task.defer(function() 
@@ -33695,21 +33751,19 @@ run(function()
                     end
                 end))
             else
-                -- Restore all parts when turned off
+                -- Restore all parts
                 for part, _ in pairs(originalData) do
                     restorePart(part)
                 end
                 
-                -- Move textures back to their original parts
+                -- Clean up storage
                 for _, child in storage:GetChildren() do
-                    -- We can't easily track original parents without a massive table, 
-                    -- but since we restored the MaterialVariant/TextureID, the block looks normal anyway.
                     child:Destroy() 
                 end
                 
                 table.clear(originalData)
             end
         end,
-        Tooltip = 'Removes grid lines, fabric patterns, and sword textures but keeps solid colors'
+        Tooltip = 'Removes grid lines and patterns but keeps solid colors'
     })
 end)
