@@ -19593,6 +19593,7 @@ run(function()
 	local trackedParts = {}
 	local lastWeaponState = nil
 	local weaponCheckCounter = 0
+	local lastChar = nil -- Added to track respawns
 	
 	local function removeCollision(character)
 		if not character then return end
@@ -19689,10 +19690,20 @@ run(function()
 		Function = function(callback)
 			if callback then
 				local frameCounter = 0
+				lastChar = lplr.Character -- Initialize character tracking
+				
 				local heartbeatConn = runService.Heartbeat:Connect(function()
 					if not NoCollision.Enabled then return end
 					
 					frameCounter = frameCounter + 1
+					
+					-- FIX 1: Detect character respawn and force update immediately
+					if lplr.Character ~= lastChar then
+						lastChar = lplr.Character
+						if lastChar then
+							updateAllCollisions(true)
+						end
+					end
 					
 					if frameCounter % 12 == 0 then
 						updateAllCollisions(false)
@@ -19704,6 +19715,17 @@ run(function()
 				end)
 				table.insert(connections, heartbeatConn)
 				
+				-- FIX 2: Direct hook for local player character added
+				local charAddedConn = lplr.CharacterAdded:Connect(function(character)
+					task.wait(0.5) -- Wait for character to fully load
+					if NoCollision.Enabled then
+						if not hasValidWeapon() then
+							removeCollision(character)
+						end
+					end
+				end)
+				table.insert(connections, charAddedConn)
+
 				lastWeaponState = hasValidWeapon()
 				for _, entity in entitylib.List do
 					if entity.Character and entity.Character.Parent then
@@ -19774,12 +19796,12 @@ run(function()
 				table.clear(motorParts)
 				lastWeaponState = nil
 				weaponCheckCounter = 0
+				lastChar = nil
 			end
 		end,
 		Tooltip = 'Mine/build through players and NPCs'
 	})
 end)
-
 run(function()
 	local ShadowRemover
 	local connections = {}
