@@ -33221,3 +33221,118 @@ run(function()
         end
     })
 end)
+
+	run(function()
+    local CheatDetector
+    
+    local function Added(player, reason)
+        if not CheatersFlagged[player] then
+            CheatersFlagged[player] = true
+            whitelist.customtags[player.Name] = {{ text = 'CHEATER', color = Color3.new(1, 0, 0)}}
+            notif('CheatDetector', `{player.Name} flagged for {reason:lower()}ing`, 10, 'info')
+        end
+    end
+    local function checkPoint(pos, params)
+        for _, v in workspace:GetPartBoundsInRadius(pos, 0, params) do
+            if v.CanCollide and (v:GetClosestPointOnSurface(pos) - pos).Magnitude <= 0 then
+                return false
+            end
+        end
+    
+        return true
+    end
+    
+    local overlap = OverlapParams.new()
+    overlap.FilterDescendantsInstances = {workspace.Map}
+    overlap.FilterType = Enum.RaycastFilterType.Include
+    
+    local Checks = {
+        Killaura = function()
+            local AttackData = {}
+            local Strikes = {}
+    
+            CheatDetector:Clean(shared.bindable.Event:Connect(function(damageTable)
+                if damageTable.damageType == 0 and damageTable.fromEntity then
+                    local from = playersService:GetPlayerFromCharacter(damageTable.fromEntity)
+    
+                    if from and from ~= lplr then
+                        local lastHit = (os.clock() - (AttackData[from] or 0))
+                        if lastHit <= 0.28 then
+                            Strikes[from] = (Strikes[from] or 0) + 1
+    
+                            task.delay(60, function()
+                                pcall(function()
+                                    Strikes[from] -= 1
+                                end)
+                            end)
+    
+                            if Strikes[from] > 2 then
+                                Added(from, 'Killaura')
+                            end
+                        end
+    
+                        AttackData[from] = os.clock()
+                    end
+                end
+            end))
+        end,
+        Reach = function() -- this is so disgusting, but whatever
+            CheatDetector:Clean(shared.bindable.Event:Connect(function(damageTable)
+                if damageTable.damageType == 0 and damageTable.fromEntity then
+                    local player = playersService:GetPlayerFromCharacter(damageTable.fromEntity) 
+                    if player and player ~= lplr then
+                        local magnitude = (damageTable.fromEntity.PrimaryPart.Position - damageTable.entityInstance.PrimaryPart.Position).Magnitude
+                        local held = (store.inventories[player] or {}).hand
+                        local meta = held and bedwars.ItemMeta[held.tool.Name].sword or nil
+                        local reach = math.floor(meta and meta.attackRange or 14.4) + 4
+                        
+                        if magnitude > (reach + lplr:GetNetworkPing()) then
+                            Added(player, 'Reach')
+                        end
+                    end
+                end
+            end))
+        end,
+        Invisible = function() end,
+        HighJump = function() end,
+        Phase = function() end
+    }
+    
+    CheatDetector = vape.Categories.Utility:CreateModule({
+        Name = 'Cheat Detector',
+        Function = function(callback)
+            if callback then
+                for i, v in Checks do
+                    if CheatDetector.Options and CheatDetector.Options[i].Enabled then
+                        task.spawn(v)
+                    end
+                end
+    
+                repeat
+                    for _, v in entitylib.List do
+                        if v.Player and v.Player ~= lplr and v.Health > 0 and not CheatersFlagged[v.Player] then
+                            if CheatDetector.Options.Invisible.Enabled and (v.RootPart.Position - v.Head.Position).Magnitude > 5 then
+                                Added(v.Player, 'Invisible')
+                            end
+                            if CheatDetector.Options.HighJump.Enabled and v.RootPart.AssemblyLinearVelocity.Y > 80 then
+                                Added(v.Player, 'HighJump')
+                            end
+                            if CheatDetector.Options.Phase.Enabled and not checkPoint(v.Head.Position, overlap) then
+                                Added(v.Player, 'Phas')
+                            end
+                        end
+                    end
+                    task.wait(0.1)
+                until not CheatDetector.Enabled
+            end
+        end,
+        Tooltip = 'Alerts for any possible cheaters.'
+    })
+    
+    for i in Checks do
+        CheatDetector:CreateToggle({
+            Name = i,
+            Default = true
+        })
+    end
+end)
