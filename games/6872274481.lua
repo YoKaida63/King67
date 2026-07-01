@@ -33628,8 +33628,75 @@ run(function()
     local originalProps = {} 
     local originalParent = {} 
 
-    local function isWhite(c3)
-        return c3.R > 0.95 and c3.G > 0.95 and c3.B > 0.95
+    -- Comprehensive color dictionary for Bedwars blocks
+    local blockColors = {
+        ["wool_white"] = Color3.fromRGB(255, 255, 255),
+        ["wool_red"] = Color3.fromRGB(255, 50, 50),
+        ["wool_green"] = Color3.fromRGB(50, 255, 50),
+        ["wool_blue"] = Color3.fromRGB(50, 100, 255),
+        ["wool_yellow"] = Color3.fromRGB(255, 255, 50),
+        ["wool_orange"] = Color3.fromRGB(255, 150, 50),
+        ["wool_purple"] = Color3.fromRGB(180, 50, 255),
+        ["wool_pink"] = Color3.fromRGB(255, 100, 200),
+        ["wool_black"] = Color3.fromRGB(50, 50, 50),
+        ["wool_cyan"] = Color3.fromRGB(50, 255, 255),
+        ["wool_magenta"] = Color3.fromRGB(255, 50, 150),
+        ["wool_lime"] = Color3.fromRGB(150, 255, 50),
+        ["wool_brown"] = Color3.fromRGB(150, 75, 0),
+        ["wool_gray"] = Color3.fromRGB(150, 150, 150),
+        ["wool_light_blue"] = Color3.fromRGB(100, 200, 255),
+        ["clay_white"] = Color3.fromRGB(255, 255, 255),
+        ["clay_orange"] = Color3.fromRGB(255, 150, 50),
+        ["clay_light_brown"] = Color3.fromRGB(200, 170, 120),
+        ["clay"] = Color3.fromRGB(220, 180, 140),
+        ["wood_plank_spruce"] = Color3.fromRGB(222, 184, 135),
+        ["wood"] = Color3.fromRGB(180, 140, 100),
+        ["stone"] = Color3.fromRGB(150, 150, 150),
+        ["andesite"] = Color3.fromRGB(150, 150, 150),
+        ["cobblestone"] = Color3.fromRGB(150, 150, 150),
+        ["obsidian"] = Color3.fromRGB(50, 30, 80),
+        ["bedrock"] = Color3.fromRGB(80, 80, 80),
+        ["tnt"] = Color3.fromRGB(255, 50, 50),
+        ["sandstone"] = Color3.fromRGB(220, 200, 150),
+        ["sand"] = Color3.fromRGB(220, 200, 150),
+        ["bed"] = Color3.fromRGB(200, 50, 50),
+        ["concrete"] = Color3.fromRGB(180, 180, 180),
+        ["grass"] = Color3.fromRGB(50, 255, 50),
+        ["moss_block"] = Color3.fromRGB(50, 255, 50),
+        ["iron_ore_mesh_block"] = Color3.fromRGB(200, 200, 200),
+        ["lucky_block"] = Color3.fromRGB(255, 200, 50),
+        ["glass"] = Color3.fromRGB(200, 230, 255),
+        ["emerald"] = Color3.fromRGB(50, 255, 100),
+        ["diamond"] = Color3.fromRGB(50, 200, 255),
+        ["gold"] = Color3.fromRGB(255, 200, 50),
+    }
+
+    local function getBlockColor(blockName)
+        -- Direct lookup first
+        if blockColors[blockName] then 
+            return blockColors[blockName] 
+        end
+        
+        local lowerName = blockName:lower()
+        
+        -- Check for wool colors
+        if lowerName:find("wool") then
+            for name, color in pairs(blockColors) do
+                if name:find("wool") and lowerName:find(name:gsub("wool_", ""), 1, true) then
+                    return color
+                end
+            end
+            return Color3.fromRGB(200, 200, 200) -- Default wool gray
+        end
+        
+        -- Fuzzy match for other blocks
+        for name, color in pairs(blockColors) do
+            if lowerName:find(name, 1, true) then
+                return color
+            end
+        end
+        
+        return nil
     end
 
     local function processPart(block)
@@ -33651,18 +33718,23 @@ run(function()
                 originalParent[child] = block
                 
                 -- If the texture has a color tint that isn't white, save it!
-                if not isWhite(child.Color3) then
+                if child.Color3.R > 0.01 or child.Color3.G > 0.01 or child.Color3.B > 0.01 then
                     foundColor = child.Color3
                 end
                 
-                -- Move to storage folder instead of destroying (allows toggle off)
+                -- Move to storage folder instead of destroying
                 child.Parent = storage
             end
         end
 
-        -- Apply the extracted color to the block so it stays vibrant
+        -- Apply the extracted color OR lookup from dictionary
         if foundColor then
             block.Color = foundColor
+        else
+            local dictColor = getBlockColor(block.Name)
+            if dictColor then
+                block.Color = dictColor
+            end
         end
 
         -- Remove all texture details
