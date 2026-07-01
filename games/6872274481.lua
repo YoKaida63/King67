@@ -6887,6 +6887,82 @@ run(function()
         Tooltip = 'Auto charges Vanessa triple shot'
     })
 end)
+run(function()
+    local AutoBuyBlocks
+    local GUICheck
+    local DelaySlider
+    local running = false
+
+    local function getShopNPC()
+        local shopFound = false
+        if entitylib.isAlive then
+            local localPosition = entitylib.character.RootPart.Position
+            for _, v in store.shop do
+                if (v.RootPart.Position - localPosition).Magnitude <= 20 then
+                    shopFound = true
+                    break
+                end
+            end
+        end
+        return shopFound
+    end
+
+    AutoBuyBlocks = vape.Categories.Inventory:CreateModule({
+        Name = "AutoBuyBlocks",
+        Tooltip = "auto buy blocks",
+        Function = function(enabled)
+            running = enabled
+            if enabled then
+                task.spawn(function()
+                    while running do
+                        local canBuy = true
+                        if GUICheck.Enabled then
+                            if bedwars.AppController:isAppOpen('BedwarsItemShopApp') then
+                                canBuy = true
+                            else
+                                canBuy = false
+                            end
+                        else
+                            canBuy = getShopNPC()
+                        end
+                        if canBuy then
+                            local args = {
+                                {
+                                    shopItem = {
+                                        currency = "iron",
+                                        itemType = "wool_white",
+                                        amount = 16,
+                                        price = 8,
+                                        disabledInQueue = {"mine_wars"},
+                                        category = "Blocks"
+                                    },
+                                    shopId = "1_item_shop"
+                                }
+                            }
+                            pcall(function()
+                                bedwars.Client:Get(remotes.BedwarsPurchaseItem).instance:InvokeServer(unpack(args))
+                            end)
+                        end
+                        task.wait(DelaySlider.Value)
+                    end
+                end)
+            end
+        end
+    })
+
+    GUICheck = AutoBuyBlocks:CreateToggle({
+        Name = "GUI Check",
+        Default = false
+    })
+
+    DelaySlider = AutoBuyBlocks:CreateSlider({
+        Name = "Delay",
+        Min = 0,
+        Max = 2,
+        Default = 0.1,
+        Decimal = 10,
+    })
+end)
 
 run(function()
 	local TargetPart
@@ -6902,11 +6978,11 @@ run(function()
 	local CustomPrediction
 	local HorizontalMultiplier
 	local VerticalMultiplier
-	local DesirePAWorkMode
-	local DesirePAHideCursor
-	local DesirePACursorViewMode
-	local DesirePACursorLimitBow
-	local DesirePACursorShowGUI
+	local KingPAWorkMode
+	local KingPAHideCursor
+	local KingPACursorViewMode
+	local KingPACursorLimitBow
+	local KingPACursorShowGUI
 	local cursorRenderConnection
 	local lastGUIState = false
 	local rayCheck = cloneRaycast()
@@ -6983,13 +7059,13 @@ run(function()
 	end
 
 	local function shouldHideCursor()
-		if not DesirePAHideCursor or not DesirePAHideCursor.Enabled then return false end
-		if DesirePACursorShowGUI and DesirePACursorShowGUI.Enabled and isGUIOpen() then return false end
-		if DesirePACursorLimitBow and DesirePACursorLimitBow.Enabled and not hasBowEquipped() then return false end
+		if not KingPAHideCursor or not KingPAHideCursor.Enabled then return false end
+		if KingPACursorShowGUI and KingPACursorShowGUI.Enabled and isGUIOpen() then return false end
+		if KingPACursorLimitBow and KingPACursorLimitBow.Enabled and not hasBowEquipped() then return false end
 		local inFirstPerson = isFirstPerson()
-		if DesirePACursorViewMode then
-			if DesirePACursorViewMode.Value == 'First Person' then return inFirstPerson
-			elseif DesirePACursorViewMode.Value == 'Third Person' then return not inFirstPerson
+		if KingPACursorViewMode then
+			if KingPACursorViewMode.Value == 'First Person' then return inFirstPerson
+			elseif KingPACursorViewMode.Value == 'Third Person' then return not inFirstPerson
 			end
 		end
 		return true
@@ -7008,10 +7084,10 @@ run(function()
 	end
 
 	local function shouldPAWork()
-		if not DesirePAWorkMode then return true end
+		if not KingPAWorkMode then return true end
 		local inFirstPerson = isFirstPerson()
-		if DesirePAWorkMode.Value == 'First Person' then return inFirstPerson
-		elseif DesirePAWorkMode.Value == 'Third Person' then return not inFirstPerson
+		if KingPAWorkMode.Value == 'First Person' then return inFirstPerson
+		elseif KingPAWorkMode.Value == 'Third Person' then return not inFirstPerson
 		end
 		return true
 	end
@@ -7123,7 +7199,7 @@ run(function()
 					if PAFOVCircle then
 						runPAFOVCircle(PAFOVCircle.Enabled)
 					end
-					if DesirePAHideCursor and DesirePAHideCursor.Enabled and not cursorRenderConnection then
+					if KingPAHideCursor and KingPAHideCursor.Enabled and not cursorRenderConnection then
 						cursorRenderConnection = runService.RenderStepped:Connect(function()
 							checkGUIState()
 							updateCursor()
@@ -7330,7 +7406,7 @@ run(function()
 		Tooltip = 'Prioritize targets when multiple are in range'
 	})
 
-	DesirePAWorkMode = ProjectileAimbot:CreateDropdown({
+	KingPAWorkMode = ProjectileAimbot:CreateDropdown({
 		Name = 'PA Work Mode',
 		List = {'First Person', 'Third Person', 'Both'},
 		Default = 'Both',
@@ -7392,14 +7468,14 @@ run(function()
 	end
 	updateRandomizeVisibility()
 
-	DesirePAHideCursor = ProjectileAimbot:CreateToggle({
+	KingPAHideCursor = ProjectileAimbot:CreateToggle({
 		Name = 'Hide Cursor',
 		Default = false,
 		Tooltip = 'Hides the cursor while aiming',
 		Function = function(callback)
-			if DesirePACursorViewMode then DesirePACursorViewMode.Object.Visible = callback end
-			if DesirePACursorLimitBow then DesirePACursorLimitBow.Object.Visible = callback end
-			if DesirePACursorShowGUI then DesirePACursorShowGUI.Object.Visible = callback end
+			if KingPACursorViewMode then KingPACursorViewMode.Object.Visible = callback end
+			if KingPACursorLimitBow then KingPACursorLimitBow.Object.Visible = callback end
+			if KingPACursorShowGUI then KingPACursorShowGUI.Object.Visible = callback end
 			if callback and ProjectileAimbot.Enabled then
 				if not cursorRenderConnection then
 					cursorRenderConnection = runService.RenderStepped:Connect(function()
@@ -7422,38 +7498,38 @@ run(function()
 		end
 	})
 
-	DesirePACursorViewMode = ProjectileAimbot:CreateDropdown({
+	KingPACursorViewMode = ProjectileAimbot:CreateDropdown({
 		Name = 'Cursor View Mode',
 		List = {'First Person', 'Third Person', 'Both'},
 		Default = 'First Person',
 		Darker = true,
 		Visible = false,
 		Function = function()
-			if ProjectileAimbot.Enabled and DesirePAHideCursor.Enabled then
+			if ProjectileAimbot.Enabled and KingPAHideCursor.Enabled then
 				updateCursor()
 			end
 		end
 	})
 
-	DesirePACursorLimitBow = ProjectileAimbot:CreateToggle({
+	KingPACursorLimitBow = ProjectileAimbot:CreateToggle({
 		Name = 'Limit to Bow',
 		Darker = true,
 		Visible = false,
 		Tooltip = 'Only hides cursor when bow/crossbow is equipped',
 		Function = function()
-			if ProjectileAimbot.Enabled and DesirePAHideCursor.Enabled then
+			if ProjectileAimbot.Enabled and KingPAHideCursor.Enabled then
 				updateCursor()
 			end
 		end
 	})
 
-	DesirePACursorShowGUI = ProjectileAimbot:CreateToggle({
+	KingPACursorShowGUI = ProjectileAimbot:CreateToggle({
 		Name = 'Show on GUI',
 		Darker = true,
 		Visible = false,
 		Tooltip = 'Shows cursor when a GUI is open',
 		Function = function()
-			if ProjectileAimbot.Enabled and DesirePAHideCursor.Enabled then
+			if ProjectileAimbot.Enabled and KingPAHideCursor.Enabled then
 				updateCursor()
 			end
 		end
