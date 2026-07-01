@@ -32997,25 +32997,27 @@ run(function()
         return (cache - block.Position).Magnitude
     end
     
+    -- FIX: Completely removed the broken isBlockBreakable check. 
+    -- It now just checks distance and attributes, then forces the break.
     local function attemptBreak(tab, localPosition)
         if not tab then return end
         for _, v in tab do
-            if (v.Position - localPosition).Magnitude < Range.Value and bedwars.BlockController:isBlockBreakable({blockPosition = v.Position / 3}, lplr) then
+            if (v.Position - localPosition).Magnitude < Range.Value then
                 if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
                 if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then continue end
                 if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
     
                 hit += 1
-                local target, path, endpos = bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, Closet.Enabled and closetMethod or breakmethods[Mode.Value], Angle.Value, not Nuker.Enabled)
-                if path then
-                    local currentnode = target
-                    for _, part in parts do
-                        part.Position = currentnode or Vector3.zero
-                        if currentnode then
-                            part.BoxHandleAdornment.Color3 = currentnode == endpos and Color3.new(1, 0.2, 0.2) or currentnode == target and Color3.new(0.2, 0.2, 1) or Color3.new(0.2, 1, 0.2)
-                        end
-                        currentnode = path[currentnode]
-                    end
+                
+                -- Try the normal function first, if it fails (because of the hook), use the direct remote
+                local success = pcall(function()
+                    bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, CustomHealth.Enabled and customHealthbar or nil, AutoTool.Enabled, Closet.Enabled and closetMethod or breakmethods[Mode.Value], Angle.Value, not Nuker.Enabled)
+                end)
+                
+                if not success then
+                    pcall(function()
+                        bedwars.Client:Get(remotes.BreakBlock):SendToServer({blockPosition = bedwars.BlockController:getBlockPosition(v.Position)})
+                    end)
                 end
     
                 task.wait(InstantBreak.Enabled and (store.damageBlockFail > tick() and 4.5 or 0) or BreakSpeed.Value)
@@ -33103,20 +33105,15 @@ run(function()
         Tooltip = 'Break blocks around you automatically'
     })
 
-    -- ==========================================
-    -- FIXED THE CRASH HERE
-    -- ==========================================
     local methods = {}
     if breakmethods then
         for i in pairs(breakmethods) do
             table.insert(methods, i)
         end
     else
-        -- Fallback if breakmethods is missing from the script
         table.insert(methods, 'Closest')
         table.insert(methods, 'Mouse')
     end
-    -- ==========================================
 
     Mode = Breaker:CreateDropdown({
         Name = 'Break mode',
@@ -33211,7 +33208,6 @@ run(function()
         Name = 'Closest break',
         Tooltip = 'Uses ur mouse\'s position to get the closest block to you',
         Function = function(callback)
-            -- Added safety check so it doesn't crash if Mode failed to load
             if Mode and Mode.Object then
                 Mode.Object.Visible = not callback
             end
