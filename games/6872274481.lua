@@ -32846,3 +32846,219 @@ end)
         })
     end
 end)
+
+run(function()
+    local Breaker
+    local Range
+    local BreakSpeed
+    local UpdateRate
+    local Bed
+    local LuckyBlock
+    local IronOre
+    local Tesla
+    local Hive
+    local Pinata
+    local Crops
+    local Snow
+    local Effect
+    local CustomHealth = {}
+    local Animation
+    local SelfBreak
+    local InstantBreak
+    local LimitItem
+    local AutoTool
+    local MouseDown
+    local YetiBreaker
+    local RagnarBreaker
+    local ShowPath
+    local BreakClosest
+    local BlockHighlight
+    local BreakerAngle
+    local blockHighlightInstance
+    local parts = {}
+    local breakabilityCache = {}
+    local BREAK_CACHE_TTL = 0.5
+
+    -- FIX 1: Cached block breakable check using the correct getBlockPosition method
+    local function cachedIsBreakable(v)
+        local now = tick()
+        local cached = breakabilityCache[v]
+        if cached and (now - cached.time) < BREAK_CACHE_TTL then
+            return cached.result
+        end
+        local ok, result = pcall(function()
+            return bedwars.BlockController:isBlockBreakable({blockPosition = bedwars.BlockController:getBlockPosition(v.Position)}, lplr)
+        end)
+        breakabilityCache[v] = {result = ok and result, time = now}
+        return ok and result
+    end
+
+    -- Helper to collect blocks by tag
+    local function collection(tag, module, customadd)
+        local objs = {}
+        local connections = {}
+        local function trackAdd(obj)
+            if obj:IsA('BasePart') then
+                if customadd then
+                    customadd(objs, obj, tag)
+                    return
+                end
+                table.insert(objs, obj)
+            end
+        end
+        local function trackRemove(obj)
+            if obj:IsA('BasePart') then
+                local i = table.find(objs, obj)
+                if i then table.remove(objs, i) end
+            end
+            breakabilityCache[obj] = nil
+        end
+        for _, obj in workspace:GetDescendants() do trackAdd(obj) end
+        module:Clean(workspace.DescendantAdded:Connect(trackAdd))
+        module:Clean(workspace.DescendantRemoving:Connect(trackRemove))
+        return objs
+    end
+
+    local function wrappedHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
+        if BlockHighlight and BlockHighlight.Enabled and blockHighlightInstance then
+            blockHighlightInstance.Size = block.Size + Vector3.new(0.01, 0.01, 0.01)
+            blockHighlightInstance.Adornee = block
+        end
+        if CustomHealth.Enabled and customHealthbar then
+            customHealthbar(self, blockRef, health, maxHealth, changeHealth, block)
+        end
+    end
+
+    -- FIX 2: Safe break function with pcall
+    local function doBreak(v, isPathBlock)
+        if RagnarBreaker and RagnarBreaker.Enabled then
+            if store.equippedKit == 'berserker' and bedwars.AbilityController and bedwars.AbilityController:canUseAbility("berserker_rage") then
+                pcall(function() replicatedStorage:WaitForChild("events-@easy-games/game-core:shared/game-core-networking@getEvents.Events"):WaitForChild("useAbility"):FireServer("berserker_rage") end)
+            end
+        end
+
+        pcall(function()
+            if type(bedwars.breakBlock) == "function" then
+                if BreakClosest and BreakClosest.Enabled then bedwars.breakClosestMode = true end
+                bedwars.breakBlock(v, Effect.Enabled, Animation.Enabled, wrappedHealthbar, (InstantBreak.Enabled or AutoTool.Enabled) and LimitItem.Enabled)
+                bedwars.breakClosestMode = false
+            end
+        end)
+
+        task.wait(isPathBlock and 0 or (InstantBreak.Enabled and (store.damageBlockFail > tick() and 4.5 or 0) or BreakSpeed.Value))
+        return true
+    end
+
+    Breaker = vape.Categories.Minigames:CreateModule({
+        Name = 'Breaker',
+        Function = function(callback)
+            if callback then
+                for _ = 1, 30 do
+                    local part = Instance.new('Part')
+                    part.Anchored = true
+                    part.CanQuery = false
+                    part.CanCollide = false
+                    part.Transparency = 1
+                    part.Parent = gameCamera
+                    local highlight = Instance.new('BoxHandleAdornment')
+                    highlight.Size = Vector3.one
+                    highlight.AlwaysOnTop = true
+                    highlight.ZIndex = 1
+                    highlight.Transparency = 0.5
+                    highlight.Adornee = part
+                    highlight.Parent = part
+                    table.insert(parts, part)
+                end
+
+                local beds = collection('bed', Breaker)
+                local luckyblock = collection('LuckyBlock', Breaker)
+                local ironores = collection('iron_ore_mesh_block', Breaker)
+                local teslas = collection('tesla-trap', Breaker, function(tab, obj)
+                    task.delay(0.1, function()
+                        local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
+                        if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
+                            table.insert(tab, obj)
+                        end
+                    end)
+                end)
+                local hives = collection('beehive', Breaker, function(tab, obj)
+                    task.delay(0.1, function()
+                        local player = playersService:GetPlayerByUserId(obj:GetAttribute('PlacedByUserId'))
+                        if player and player:GetAttribute('Team') ~= lplr:GetAttribute('Team') then
+                            table.insert(tab, obj)
+                        end
+                    end)
+                end)
+                local pinatas = collection('pinata', Breaker)
+                local crops = collection('crop', Breaker)
+                local snow = collection('snow_block', Breaker)
+
+                repeat
+                    task.wait(1 / UpdateRate.Value)
+                    if not Breaker.Enabled then break end
+
+                    if entitylib.isAlive then
+                        local localPosition = entitylib.character.RootPart.Position
+
+                        local function attemptBreak(tab)
+                            if not tab then return end
+                            for _, v in tab do
+                                if (v.Position - localPosition).Magnitude < Range.Value then
+                                    -- Uses the fixed cachedIsBreakable function
+                                    if cachedIsBreakable(v) then
+                                        -- Self Break check (Kept as requested)
+                                        if not SelfBreak.Enabled and v:GetAttribute('PlacedByUserId') == lplr.UserId then continue end
+                                        if (v:GetAttribute('BedShieldEndTime') or 0) > workspace:GetServerTimeNow() then continue end
+                                        
+                                        -- Limit to items check (Kept as requested)
+                                        if LimitItem.Enabled and not (store.hand.tool and bedwars.ItemMeta[store.hand.tool.Name].breakBlock) then continue end
+                                        
+                                        -- Mouse Down check
+                                        if MouseDown.Enabled and not inputService:IsMouseButtonPressed(0) then continue end
+
+                                        doBreak(v, false)
+                                        return true
+                                    end
+                                end
+                            end
+                            return false
+                        end
+
+                        if attemptBreak(Bed.Enabled and beds) then continue end
+                        if attemptBreak(Tesla.Enabled and teslas) then continue end
+                        if attemptBreak(Hive.Enabled and hives) then continue end
+                        if attemptBreak(LuckyBlock.Enabled and luckyblock) then continue end
+                        if attemptBreak(IronOre.Enabled and ironores) then continue end
+                        if attemptBreak(Pinata.Enabled and pinatas) then continue end
+                        if attemptBreak(Crops.Enabled and crops) then continue end
+                        if attemptBreak(Snow.Enabled and snow) then continue end
+
+                        if BlockHighlight and BlockHighlight.Enabled and blockHighlightInstance then
+                            blockHighlightInstance.Adornee = nil
+                        end
+                        for _, v in parts do
+                            v.Position = Vector3.zero
+                        end
+                    end
+                until not Breaker.Enabled
+            else
+                table.clear(breakabilityCache)
+                if blockHighlightInstance then
+                    blockHighlightInstance:Destroy()
+                    blockHighlightInstance = nil
+                end
+                for _, v in parts do
+                    v:ClearAllChildren()
+                    v:Destroy()
+                end
+                table.clear(parts)
+            end
+        end,
+        Tooltip = 'Break blocks around you automatically'
+    })
+
+    -- UI Elements
+    Range = Breaker:CreateSlider({Name = 'Break range', Min = 1, Max = 30, Default = 30, Suffix = function(val) return val == 1 and 'stud' or 'studs' end})
+    BreakSpeed = Breaker:CreateSlider({Name = 'Break speed', Min = 0, Max = 0.3, Default = 0.25, Decimal = 100, Suffix = 'seconds'})
+    UpdateRate = Breaker:Create
+
