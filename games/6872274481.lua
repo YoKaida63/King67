@@ -33620,150 +33620,112 @@ end)
 end)
 
 run(function()
-    local TextureRemover
-    local originalProps = {}
-    local processed = {}
+    local FlatColors
+    local storage = Instance.new("Folder")
+    storage.Name = "FlatColorsStorage"
+    storage.Parent = game:GetService("ReplicatedStorage")
     
-    -- Color fallback dictionary for blocks that rely on textures for their color
-    local blockColors = {
-        ["wool_red"] = Color3.fromRGB(255, 50, 50), ["wool_blue"] = Color3.fromRGB(50, 100, 255),
-        ["wool_green"] = Color3.fromRGB(50, 255, 50), ["wool_yellow"] = Color3.fromRGB(255, 255, 50),
-        ["wool_orange"] = Color3.fromRGB(255, 150, 50), ["wool_purple"] = Color3.fromRGB(180, 50, 255),
-        ["wool_pink"] = Color3.fromRGB(255, 100, 200), ["wool_black"] = Color3.fromRGB(50, 50, 50),
-        ["wool_white"] = Color3.fromRGB(255, 255, 255), ["wool_cyan"] = Color3.fromRGB(50, 255, 255),
-        ["wool_lime"] = Color3.fromRGB(150, 255, 50), ["wool_brown"] = Color3.fromRGB(150, 75, 0),
-        ["wool_gray"] = Color3.fromRGB(150, 150, 150), ["wool_light_blue"] = Color3.fromRGB(100, 200, 255),
-        ["clay_white"] = Color3.fromRGB(255, 255, 255), ["clay_orange"] = Color3.fromRGB(255, 150, 50),
-        ["clay_light_brown"] = Color3.fromRGB(200, 170, 120), ["clay"] = Color3.fromRGB(220, 180, 140),
-        ["wood_plank_spruce"] = Color3.fromRGB(222, 184, 135), ["wood"] = Color3.fromRGB(180, 140, 100),
-        ["stone"] = Color3.fromRGB(150, 150, 150), ["andesite"] = Color3.fromRGB(150, 150, 150),
-        ["cobblestone"] = Color3.fromRGB(150, 150, 150), ["obsidian"] = Color3.fromRGB(50, 30, 80),
-        ["bedrock"] = Color3.fromRGB(80, 80, 80), ["tnt"] = Color3.fromRGB(255, 50, 50),
-        ["sandstone"] = Color3.fromRGB(220, 200, 150), ["sand"] = Color3.fromRGB(220, 200, 150),
-        ["bed"] = Color3.fromRGB(200, 50, 50), ["concrete"] = Color3.fromRGB(180, 180, 180),
-        ["grass"] = Color3.fromRGB(50, 255, 50), ["moss_block"] = Color3.fromRGB(50, 255, 50),
-        ["iron_ore_mesh_block"] = Color3.fromRGB(200, 200, 200), ["lucky_block"] = Color3.fromRGB(255, 200, 50)
-    }
+    local originalProps = {} 
+    local originalParent = {} 
 
-    local function getBlockColor(blockName)
-        if blockColors[blockName] then return blockColors[blockName] end
-        local lowerName = blockName:lower()
-        for name, color in pairs(blockColors) do
-            if lowerName:find(name, 1, true) then return color end
-        end
-        return nil -- Return nil if not found so it keeps its original base color
+    local function isWhite(c3)
+        return c3.R > 0.95 and c3.G > 0.95 and c3.B > 0.95
     end
 
-    local function removeTextures(block)
-        if not block or not block.Parent or processed[block] then return end
+    local function processPart(block)
+        if not block or not block.Parent or originalProps[block] then return end
         if not block:IsA("BasePart") then return end
 
-        -- FIX 1: Save the original Color property
+        -- Save original properties
         originalProps[block] = {
             Material = block.Material,
-            Color = block.Color, 
-            TextureID = block:IsA("MeshPart") and block.TextureID or nil,
-            Textures = {}
+            Color = block.Color,
+            TextureID = block:IsA("MeshPart") and block.TextureID or nil
         }
 
-        -- Save and remove all Texture/Decal children
+        local foundColor = nil
+
+        -- Look for Texture/Decal children to extract the hidden tint color
         for _, child in block:GetChildren() do
             if child:IsA("Texture") or child:IsA("Decal") then
-                table.insert(originalProps[block].Textures, child)
-                child.Parent = nil 
+                originalParent[child] = block
+                
+                -- If the texture has a color tint that isn't white, save it!
+                if not isWhite(child.Color3) then
+                    foundColor = child.Color3
+                end
+                
+                -- Move to storage folder instead of destroying (allows toggle off)
+                child.Parent = storage
             end
         end
 
-        -- Change to SmoothPlastic to remove detail
-        block.Material = Enum.Material.SmoothPlastic
-
-        -- FIX 2: Apply the correct color based on the block's name
-        local correctColor = getBlockColor(block.Name)
-        if correctColor then
-            block.Color = correctColor
+        -- Apply the extracted color to the block so it stays vibrant
+        if foundColor then
+            block.Color = foundColor
         end
 
-        -- Clear MeshPart TextureID
+        -- Remove all texture details
+        block.Material = Enum.Material.SmoothPlastic
         if block:IsA("MeshPart") then
             block.TextureID = ""
         end
-
-        processed[block] = true
     end
 
-    local function restoreBlock(block)
-        if not block or not block.Parent then
-            originalProps[block] = nil
-            processed[block] = nil
-            return
-        end
+    local function restorePart(block)
+        if not block or not block.Parent then return end
         local props = originalProps[block]
         if not props then return end
 
-        -- Restore material
-        block.Material = props.Material or Enum.Material.Plastic
-        
-        -- FIX 3: Restore the original Color property
-        block.Color = props.Color or Color3.fromRGB(255, 255, 255)
-
-        -- Restore MeshPart TextureID
-        if props.TextureID and block:IsA("MeshPart") then
+        block.Material = props.Material
+        block.Color = props.Color
+        if block:IsA("MeshPart") and props.TextureID then
             block.TextureID = props.TextureID
         end
-
-        -- Restore all textures
-        for _, tex in props.Textures do
-            if tex then
-                tex.Parent = block
-            end
-        end
-
         originalProps[block] = nil
-        processed[block] = nil
     end
 
-    local function isMapBlock(obj)
-        if not obj:IsA("BasePart") then return false end
-        local name = obj.Name:lower()
-        return name:find("wool") or name:find("clay") or name:find("wood") or
-            name:find("stone") or name:find("glass") or name:find("plank") or
-            name:find("bed") or name:find("obsidian") or name:find("sand") or
-            name:find("end") or name:find("tnt") or name:find("barrier") or
-            name:find("concrete") or name:find("_block") or name:find("iron") or
-            name:find("gold") or name:find("diamond") or name:find("emerald") or
-            name:find("lucky") or name:find("crop") or name:find("snow") or
-            name:find("moss") or name:find("cobble") or name:find("andesite")
-    end
-
-    TextureRemover = vape.Categories.BoostFPS:CreateModule({
-        Name = 'TextureRemover',
+    FlatColors = vape.Categories.BoostFPS:CreateModule({
+        Name = 'FlatColors',
         Function = function(callback)
             if callback then
+                -- Process all existing blocks
                 task.spawn(function()
                     for _, obj in workspace:GetDescendants() do
-                        if isMapBlock(obj) then
-                            removeTextures(obj)
+                        if obj:IsA("BasePart") then
+                            processPart(obj)
                         end
                     end
                 end)
-
-                TextureRemover:Clean(workspace.DescendantAdded:Connect(function(obj)
-                    if isMapBlock(obj) then
-                        task.defer(function()
-                            if obj and obj.Parent then
-                                removeTextures(obj)
-                            end
+                
+                -- Hook new blocks placed during the game
+                FlatColors:Clean(workspace.DescendantAdded:Connect(function(obj)
+                    if obj:IsA("BasePart") then
+                        task.defer(function() 
+                            if obj and obj.Parent then 
+                                processPart(obj) 
+                            end 
                         end)
                     end
                 end))
             else
-                for block, _ in pairs(processed) do
-                    restoreBlock(block)
+                -- Restore all blocks when turned off
+                for block, _ in pairs(originalProps) do
+                    restorePart(block)
                 end
+                
+                -- Move textures back to their original blocks
+                for _, child in storage:GetChildren() do
+                    local parent = originalParent[child]
+                    if parent and parent.Parent then
+                        child.Parent = parent
+                    end
+                end
+                
                 table.clear(originalProps)
-                table.clear(processed)
+                table.clear(originalParent)
             end
         end,
-        Tooltip = 'Removes all block textures but keeps original colors (flat color look)'
+        Tooltip = 'Removes texture patterns but keeps exact solid colors (Clean/Flat look)'
     })
 end)
