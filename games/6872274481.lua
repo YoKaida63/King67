@@ -4839,7 +4839,7 @@ end)
         Tooltip = 'Makes you go slightly faster when damaged'
     })
 end)
-																																											run(function()
+																																											
  																																		
 -- King killaura 
 local Attacking
