@@ -4842,9 +4842,10 @@ end)
 																																											run(function()
   run(function()
     local ConfigSystem
-    local ConfigName
     local ConfigList
-    local AutoLoad
+    local SaveToggle
+    local LoadToggle
+    local DeleteToggle
     local ConfigFolder = "KingVape_Configs/"
 
     if not isfolder(ConfigFolder) then 
@@ -4864,36 +4865,34 @@ end)
         return files
     end
 
-    local function saveConfig()
-        local name = ConfigName.Value
-        if not name or name:gsub("%s+", "") == "" then 
-            vape:CreateNotification("Config", "Please enter a config name!", 3, "error") 
+    local function doSave()
+        local name = ConfigList.Value
+        if not name or name == "None" then 
+            vape:CreateNotification("Config", "Type a name in the dropdown!", 3, "error") 
+            SaveToggle:Toggle() 
             return 
         end
 
         local configData = {}
         
-        -- Iterate through all categories and modules (Standard Vape V4/V5 structure)
-        for _, category in pairs(vape.Categories) do
-            for _, module in pairs(category.Modules) do
-                local mName = module.Name
-                local mData = { Enabled = module.Enabled }
-                
-                if module.Settings then
-                    for sName, setting in pairs(module.Settings) do
-                        if setting.ListEnabled ~= nil then
-                            mData[sName] = { Type = "TextList", Value = setting.ListEnabled }
-                        elseif setting.Hue ~= nil and setting.Sat ~= nil and setting.Value ~= nil then
-                            mData[sName] = { Type = "Color", H = setting.Hue, S = setting.Sat, V = setting.Value }
-                        elseif setting.Value ~= nil and setting.Enabled == nil then
-                            mData[sName] = { Type = "Value", Value = setting.Value }
-                        elseif setting.Enabled ~= nil and setting.Value == nil then
-                            mData[sName] = { Type = "Toggle", Enabled = setting.Enabled }
-                        end
+        -- Safely iterate through all modules using vape.Modules (which your script uses)
+        for mName, module in pairs(vape.Modules) do
+            local mData = { Enabled = module.Enabled }
+            
+            if module.Settings then
+                for sName, setting in pairs(module.Settings) do
+                    if setting.ListEnabled ~= nil then
+                        mData[sName] = { Type = "TextList", Value = setting.ListEnabled }
+                    elseif setting.Hue ~= nil and setting.Sat ~= nil and setting.Value ~= nil then
+                        mData[sName] = { Type = "Color", H = setting.Hue, S = setting.Sat, V = setting.Value }
+                    elseif setting.Value ~= nil and setting.Enabled == nil then
+                        mData[sName] = { Type = "Value", Value = setting.Value }
+                    elseif setting.Enabled ~= nil and setting.Value == nil then
+                        mData[sName] = { Type = "Toggle", Enabled = setting.Enabled }
                     end
                 end
-                configData[mName] = mData
             end
+            configData[mName] = mData
         end
 
         pcall(function()
@@ -4904,50 +4903,43 @@ end)
             ConfigList:SetList(files)
             if #files > 0 then ConfigList:SetValue(files[1]) end
         end)
+        SaveToggle:Toggle() -- Turn the toggle back off
     end
 
-    local function loadConfig(nameToLoad)
-        local name = nameToLoad or ConfigList.Value
+    local function doLoad()
+        local name = ConfigList.Value
         if not name or name == "None" then 
-            vape:CreateNotification("Config", "Please select a config to load!", 3, "error") 
+            vape:CreateNotification("Config", "Select a config!", 3, "error") 
+            LoadToggle:Toggle() 
             return 
         end
 
         local path = ConfigFolder .. name .. ".json"
         if not isfile(path) then 
             vape:CreateNotification("Config", "Config file not found!", 3, "error") 
+            LoadToggle:Toggle() 
             return 
         end
 
         local ok, data = pcall(function() return httpService:JSONDecode(readfile(path)) end)
         if not ok then 
-            vape:CreateNotification("Config", "Failed to parse config file!", 3, "error") 
+            vape:CreateNotification("Config", "Failed to parse file!", 3, "error") 
+            LoadToggle:Toggle() 
             return 
         end
 
         for mName, mData in pairs(data) do
-            -- Find the module by name across all categories
-            local targetModule = nil
-            for _, category in pairs(vape.Categories) do
-                for _, module in pairs(category.Modules) do
-                    if module.Name == mName then
-                        targetModule = module
-                        break
-                    end
-                end
-                if targetModule then break end
-            end
-
-            if targetModule then
+            local module = vape.Modules[mName]
+            if module then
                 pcall(function()
-                    if mData.Enabled ~= nil and targetModule.Enabled ~= mData.Enabled then 
-                        targetModule:Toggle() 
+                    if mData.Enabled ~= nil and module.Enabled ~= mData.Enabled then 
+                        module:Toggle() 
                     end
                     
-                    if targetModule.Settings then
+                    if module.Settings then
                         for sName, sData in pairs(mData) do
-                            if sName ~= "Enabled" and targetModule.Settings[sName] then
-                                local setting = targetModule.Settings[sName]
+                            if sName ~= "Enabled" and module.Settings[sName] then
+                                local setting = module.Settings[sName]
                                 if sData.Type == "Toggle" and setting.Enabled ~= sData.Enabled then 
                                     setting:Toggle()
                                 elseif sData.Type == "Value" then 
@@ -4969,68 +4961,58 @@ end)
             end
         end
         vape:CreateNotification("Config", "Loaded config '" .. name .. "'!", 3, "success")
+        LoadToggle:Toggle() -- Turn the toggle back off
+    end
+
+    local function doDelete()
+        local name = ConfigList.Value
+        if name and name ~= "None" and isfile(ConfigFolder .. name .. ".json") then
+            delfile(ConfigFolder .. name .. ".json")
+            vape:CreateNotification("Config", "Deleted '" .. name .. "'", 3)
+            local files = getFiles()
+            ConfigList:SetList(#files > 0 and files or {'None'})
+            if #files > 0 then ConfigList:SetValue(files[1]) else ConfigList:SetValue('None') end
+        else
+            vape:CreateNotification("Config", "Select a valid config!", 3, "error")
+        end
+        DeleteToggle:Toggle() -- Turn the toggle back off
     end
 
     ConfigSystem = vape.Categories.Utility:CreateModule({
         Name = 'Config System',
         Function = function(callback)
-            -- Config system is UI-only
+            -- UI only
         end,
         Tooltip = 'Save, load, and manage your cheat configurations'
     })
 
-    ConfigName = ConfigSystem:CreateTextbox({
-        Name = 'Config Name',
-        Placeholder = 'Enter name here...'
-    })
-
-    ConfigSystem:CreateButton({
-        Name = '💾 Save Config',
-        Function = saveConfig
-    })
-
     local files = getFiles()
     ConfigList = ConfigSystem:CreateDropdown({
-        Name = 'Select Config',
+        Name = 'Config Name / Select',
         List = #files > 0 and files or {'None'},
-        Default = #files > 0 and files[1] or 'None'
+        Default = #files > 0 and files[1] or 'None',
+        Tooltip = 'Type a new name here to save, or select an existing one to load'
     })
 
-    ConfigSystem:CreateButton({
+    SaveToggle = ConfigSystem:CreateToggle({
+        Name = '💾 Save Config',
+        Function = function(callback) 
+            if callback then doSave() end 
+        end
+    })
+
+    LoadToggle = ConfigSystem:CreateToggle({
         Name = '📂 Load Config',
-        Function = loadConfig
-    })
-
-    ConfigSystem:CreateButton({
-        Name = '🔄 Refresh List',
-        Function = function()
-            local files = getFiles()
-            ConfigList:SetList(#files > 0 and files or {'None'})
-            if #files > 0 then ConfigList:SetValue(files[1]) end
+        Function = function(callback) 
+            if callback then doLoad() end 
         end
     })
 
-    ConfigSystem:CreateButton({
+    DeleteToggle = ConfigSystem:CreateToggle({
         Name = '🗑️ Delete Config',
-        Function = function()
-            local name = ConfigList.Value
-            if name and name ~= "None" and isfile(ConfigFolder .. name .. ".json") then
-                delfile(ConfigFolder .. name .. ".json")
-                vape:CreateNotification("Config", "Deleted '" .. name .. "'", 3)
-                local files = getFiles()
-                ConfigList:SetList(#files > 0 and files or {'None'})
-                if #files > 0 then ConfigList:SetValue(files[1]) else ConfigList:SetValue('None') end
-            else
-                vape:CreateNotification("Config", "Select a valid config to delete!", 3, "error")
-            end
+        Function = function(callback) 
+            if callback then doDelete() end 
         end
-    })
-
-    -- Added settings to the Config System itself!
-    AutoLoad = ConfigSystem:CreateToggle({
-        Name = 'Auto Load Last Config',
-        Default = false,
-        Tooltip = 'Automatically loads the last used config when the script starts'
     })
 end)
 																																				
