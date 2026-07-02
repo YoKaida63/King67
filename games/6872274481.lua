@@ -4840,9 +4840,11 @@ end)
     })
 end)
 																																											run(function()
+  run(function()
     local ConfigSystem
     local ConfigName
     local ConfigList
+    local AutoLoad
     local ConfigFolder = "KingVape_Configs/"
 
     if not isfolder(ConfigFolder) then 
@@ -4871,23 +4873,27 @@ end)
 
         local configData = {}
         
-        for moduleName, module in pairs(vape.Modules) do
-            local mData = { Enabled = module.Enabled }
-            
-            if module.Settings then
-                for sName, setting in pairs(module.Settings) do
-                    if setting.ListEnabled ~= nil then
-                        mData[sName] = { Type = "TextList", Value = setting.ListEnabled }
-                    elseif setting.Hue ~= nil then
-                        mData[sName] = { Type = "Color", H = setting.Hue, S = setting.Sat, V = setting.Value }
-                    elseif setting.Value ~= nil and setting.Enabled == nil then
-                        mData[sName] = { Type = "Value", Value = setting.Value }
-                    elseif setting.Enabled ~= nil and setting.Value == nil then
-                        mData[sName] = { Type = "Toggle", Enabled = setting.Enabled }
+        -- Iterate through all categories and modules (Standard Vape V4/V5 structure)
+        for _, category in pairs(vape.Categories) do
+            for _, module in pairs(category.Modules) do
+                local mName = module.Name
+                local mData = { Enabled = module.Enabled }
+                
+                if module.Settings then
+                    for sName, setting in pairs(module.Settings) do
+                        if setting.ListEnabled ~= nil then
+                            mData[sName] = { Type = "TextList", Value = setting.ListEnabled }
+                        elseif setting.Hue ~= nil and setting.Sat ~= nil and setting.Value ~= nil then
+                            mData[sName] = { Type = "Color", H = setting.Hue, S = setting.Sat, V = setting.Value }
+                        elseif setting.Value ~= nil and setting.Enabled == nil then
+                            mData[sName] = { Type = "Value", Value = setting.Value }
+                        elseif setting.Enabled ~= nil and setting.Value == nil then
+                            mData[sName] = { Type = "Toggle", Enabled = setting.Enabled }
+                        end
                     end
                 end
+                configData[mName] = mData
             end
-            configData[moduleName] = mData
         end
 
         pcall(function()
@@ -4900,8 +4906,8 @@ end)
         end)
     end
 
-    local function loadConfig()
-        local name = ConfigList.Value
+    local function loadConfig(nameToLoad)
+        local name = nameToLoad or ConfigList.Value
         if not name or name == "None" then 
             vape:CreateNotification("Config", "Please select a config to load!", 3, "error") 
             return 
@@ -4919,18 +4925,29 @@ end)
             return 
         end
 
-        for moduleName, mData in pairs(data) do
-            local module = vape.Modules[moduleName]
-            if module then
+        for mName, mData in pairs(data) do
+            -- Find the module by name across all categories
+            local targetModule = nil
+            for _, category in pairs(vape.Categories) do
+                for _, module in pairs(category.Modules) do
+                    if module.Name == mName then
+                        targetModule = module
+                        break
+                    end
+                end
+                if targetModule then break end
+            end
+
+            if targetModule then
                 pcall(function()
-                    if mData.Enabled ~= nil and module.Enabled ~= mData.Enabled then 
-                        module:Toggle() 
+                    if mData.Enabled ~= nil and targetModule.Enabled ~= mData.Enabled then 
+                        targetModule:Toggle() 
                     end
                     
-                    if module.Settings then
+                    if targetModule.Settings then
                         for sName, sData in pairs(mData) do
-                            if sName ~= "Enabled" and module.Settings[sName] then
-                                local setting = module.Settings[sName]
+                            if sName ~= "Enabled" and targetModule.Settings[sName] then
+                                local setting = targetModule.Settings[sName]
                                 if sData.Type == "Toggle" and setting.Enabled ~= sData.Enabled then 
                                     setting:Toggle()
                                 elseif sData.Type == "Value" then 
@@ -4957,7 +4974,7 @@ end)
     ConfigSystem = vape.Categories.Utility:CreateModule({
         Name = 'Config System',
         Function = function(callback)
-            -- Config system is UI-only, no active loop needed
+            -- Config system is UI-only
         end,
         Tooltip = 'Save, load, and manage your cheat configurations'
     })
@@ -5007,6 +5024,13 @@ end)
                 vape:CreateNotification("Config", "Select a valid config to delete!", 3, "error")
             end
         end
+    })
+
+    -- Added settings to the Config System itself!
+    AutoLoad = ConfigSystem:CreateToggle({
+        Name = 'Auto Load Last Config',
+        Default = false,
+        Tooltip = 'Automatically loads the last used config when the script starts'
     })
 end)
 																																				
