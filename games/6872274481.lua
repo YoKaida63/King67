@@ -33768,3 +33768,69 @@ run(function()
         Tooltip = 'Removes grid lines and patterns but keeps solid colors'
     })
 end)
+run(function()
+    local AntiCheatDisabler
+    local oldFunctions = {}
+
+    AntiCheatDisabler = vape.Categories.Blatant:CreateModule({
+        Name = 'AntiCheat Disabler',
+        Function = function(callback)
+            if callback then
+                -- Hook bedwars.AntiCheat
+                pcall(function()
+                    if bedwars.AntiCheat then
+                        oldFunctions.flag = bedwars.AntiCheat.Flag
+                        oldFunctions.kick = bedwars.AntiCheat.Kick
+                        oldFunctions.sendReport = bedwars.AntiCheat.SendReport
+                        bedwars.AntiCheat.Flag = function() end
+                        bedwars.AntiCheat.Kick = function() end
+                        bedwars.AntiCheat.SendReport = function() end
+                    end
+                end)
+
+                -- Hook KnitClient AntiCheatController
+                pcall(function()
+                    if KnitClient and KnitClient.Controllers and KnitClient.Controllers.AntiCheatController then
+                        local ac = KnitClient.Controllers.AntiCheatController
+                        oldFunctions.acFlag = ac.Flag
+                        oldFunctions.acKick = ac.Kick
+                        ac.Flag = function() end
+                        ac.Kick = function() end
+                    end
+                end)
+
+                -- Hook local kick remotes
+                pcall(function()
+                    local acRemote = game.ReplicatedStorage:FindFirstChild("AntiCheat") or game.ReplicatedStorage:FindFirstChild("AC")
+                    if acRemote and acRemote:IsA("RemoteEvent") then
+                        oldFunctions.acRemoteFire = acRemote.FireServer
+                        acRemote.FireServer = function() end
+                    end
+                end)
+            else
+                -- Restore everything when turned off
+                pcall(function() 
+                    if bedwars.AntiCheat then
+                        if oldFunctions.flag then bedwars.AntiCheat.Flag = oldFunctions.flag end
+                        if oldFunctions.kick then bedwars.AntiCheat.Kick = oldFunctions.kick end
+                        if oldFunctions.sendReport then bedwars.AntiCheat.SendReport = oldFunctions.sendReport end
+                    end
+                end)
+                pcall(function() 
+                    if KnitClient and KnitClient.Controllers and KnitClient.Controllers.AntiCheatController then
+                        local ac = KnitClient.Controllers.AntiCheatController
+                        if oldFunctions.acFlag then ac.Flag = oldFunctions.acFlag end
+                        if oldFunctions.acKick then ac.Kick = oldFunctions.acKick end
+                    end
+                end)
+                pcall(function()
+                    local acRemote = game.ReplicatedStorage:FindFirstChild("AntiCheat") or game.ReplicatedStorage:FindFirstChild("AC")
+                    if acRemote and oldFunctions.acRemoteFire then
+                        acRemote.FireServer = oldFunctions.acRemoteFire
+                    end
+                end)
+            end
+        end,
+        Tooltip = 'Disables client-sided anti-cheat checks to prevent local flags.'
+    })
+end)
