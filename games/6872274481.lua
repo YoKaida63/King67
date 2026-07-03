@@ -16513,44 +16513,7 @@ run(function()
 	})
 end)
 	
-run(function()
-	local HitColor
-	local Color
-	local done = {}
-	
-	HitColor = vape.Categories.Legit:CreateModule({
-		Name = 'HitColor',
-		Function = function(callback)
-			if callback then
-				local function hookHighlight(v)
-					local highlight = v.Character and v.Character:FindFirstChild('_DamageHighlight_')
-					if highlight and not done[highlight] then
-						highlight.FillColor = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
-						highlight.FillTransparency = Color.Opacity
-						done[highlight] = true
-					end
-				end
-				for _, v in entitylib.List do hookHighlight(v) end
-				HitColor:Clean(entitylib.Events.EntityAdded:Connect(hookHighlight))
-			else
-				for highlight in pairs(done) do
-					if highlight and highlight.Parent then
-						pcall(function()
-							highlight.FillColor = Color3.new(1, 0, 0)
-							highlight.FillTransparency = 0.4
-						end)
-					end
-				end
-				table.clear(done)
-			end
-		end,
-		Tooltip = 'Customize the hit highlight options'
-	})
-	Color = HitColor:CreateColorSlider({
-		Name = 'Color',
-		DefaultOpacity = 0.4
-	})
-end)
+
 
 run(function()
     HitFix = vape.Categories.Legit:CreateModule({
@@ -16563,97 +16526,6 @@ run(function()
 	})
 end)
 
-run(function()
-	local Interface
-	local HotbarOpenInventory = require(lplr.PlayerScripts.TS.controllers.global.hotbar.ui['hotbar-open-inventory']).HotbarOpenInventory
-	local HotbarHealthbar = require(lplr.PlayerScripts.TS.controllers.global.hotbar.ui.healthbar['hotbar-healthbar']).HotbarHealthbar
-	local HotbarApp = getRoactRender(require(lplr.PlayerScripts.TS.controllers.global.hotbar.ui['hotbar-app']).HotbarApp.render)
-	local old, new = {}, {}
-	
-	vape:Clean(function()
-		for _, v in new do
-			table.clear(v)
-		end
-		for _, v in old do
-			table.clear(v)
-		end
-		table.clear(new)
-		table.clear(old)
-	end)
-	
-	local function modifyconstant(func, ind, val)
-		if not func then return end
-		if not old[func] then old[func] = {} end
-		if not new[func] then new[func] = {} end
-		if not old[func][ind] then
-			old[func][ind] = debug.getconstant(func, ind)
-		end
-		if typeof(old[func][ind]) ~= typeof(val) then return end
-		new[func][ind] = val
-	
-		if Interface.Enabled then
-			if val then
-				debug.setconstant(func, ind, val)
-			else
-				debug.setconstant(func, ind, old[func][ind])
-				old[func][ind] = nil
-			end
-		end
-	end
-	
-	Interface = vape.Categories.Legit:CreateModule({
-		Name = 'Interface',
-		Function = function(callback)
-			for i, v in (callback and new or old) do
-				for i2, v2 in v do
-					debug.setconstant(i, i2, v2)
-				end
-			end
-		end,
-		Tooltip = 'Customize bedwars UI'
-	})
-	local fontitems = {'LuckiestGuy'}
-	for _, v in Enum.Font:GetEnumItems() do
-		if v.Name ~= 'LuckiestGuy' then
-			table.insert(fontitems, v.Name)
-		end
-	end
-	Interface:CreateDropdown({
-		Name = 'Health Font',
-		List = fontitems,
-		Function = function(val)
-			modifyconstant(HotbarHealthbar.render, 77, val)
-		end
-	})
-	Interface:CreateColorSlider({
-		Name = 'Health Color',
-		Function = function(hue, sat, val)
-			modifyconstant(HotbarHealthbar.render, 16, tonumber(Color3.fromHSV(hue, sat, val):ToHex(), 16))
-			if Interface.Enabled then
-				local hotbar = lplr.PlayerGui:FindFirstChild('hotbar')
-				hotbar = hotbar and hotbar:FindFirstChild('HealthbarProgressWrapper', true)
-				if hotbar then
-					hotbar['1'].BackgroundColor3 = Color3.fromHSV(hue, sat, val)
-				end
-			end
-		end
-	})
-	Interface:CreateColorSlider({
-		Name = 'Hotbar Color',
-		DefaultOpacity = 0.8,
-		Function = function(hue, sat, val, opacity)
-			local func = oldinvrender or HotbarOpenInventory.render
-			modifyconstant(debug.getupvalue(HotbarApp, 23).render, 51, tonumber(Color3.fromHSV(hue, sat, val):ToHex(), 16))
-			modifyconstant(debug.getupvalue(HotbarApp, 23).render, 58, tonumber(Color3.fromHSV(hue, sat, math.clamp(val > 0.5 and val - 0.2 or val + 0.2, 0, 1)):ToHex(), 16))
-			modifyconstant(debug.getupvalue(HotbarApp, 23).render, 54, 1 - opacity)
-			modifyconstant(debug.getupvalue(HotbarApp, 23).render, 55, math.clamp(1.2 - opacity, 0, 1))
-			modifyconstant(func, 31, tonumber(Color3.fromHSV(hue, sat, val):ToHex(), 16))
-			modifyconstant(func, 32, math.clamp(1.2 - opacity, 0, 1))
-			modifyconstant(func, 34, tonumber(Color3.fromHSV(hue, sat, math.clamp(val > 0.5 and val - 0.2 or val + 0.2, 0, 1)):ToHex(), 16))
-		end
-	})
-end)
-	
 
 	
 
@@ -28869,101 +28741,7 @@ run(function()
 	})
 end)
 
-run(function()
-	local TrapESP
-	local Background = {}
-	local Color = {}
-	local Reference = {}
-	local Folder = Instance.new('Folder')
-	Folder.Parent = vape.gui
 
-	local function Added(v, icon)
-		local billboard = Instance.new('BillboardGui')
-		billboard.Parent = Folder
-		billboard.Name = icon
-		billboard.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)
-		billboard.Size = UDim2.fromOffset(36, 36)
-		billboard.AlwaysOnTop = true
-		billboard.ClipsDescendants = false
-		billboard.Adornee = v
-		local blur = addBlur(billboard)
-		blur.Visible = Background.Enabled
-		local image = Instance.new('ImageLabel')
-		image.Size = UDim2.fromOffset(36, 36)
-		image.Position = UDim2.fromScale(0.5, 0.5)
-		image.AnchorPoint = Vector2.new(0.5, 0.5)
-		image.BackgroundColor3 = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
-		image.BackgroundTransparency = 1 - (Background.Enabled and Color.Opacity or 0)
-		image.BorderSizePixel = 0
-		local result = bedwars.getIcon({itemType = icon}, true)
-		image.Image = result		
-		image.Image = result
-		image.Parent = billboard
-		local uicorner = Instance.new('UICorner')
-		uicorner.CornerRadius = UDim.new(0, 4)
-		uicorner.Parent = image
-		Reference[v] = billboard
-	end
-	
-
-
-	TrapESP = vape.Categories.Render:CreateModule({
-		Name = 'TrapESP',
-		Function = function(callback)
-			if callback then
-				TrapESP:Clean(collectionService:GetInstanceAddedSignal('snap_trap'):Connect(function(v)
-					if tostring(v:GetAttribute("SnapTrapTeamId")) == lplr.Team.Name then
-						return
-					end
-					Added(v, 'snap_trap')
-				end))
-				TrapESP:Clean(collectionService:GetInstanceRemovedSignal('snap_trap'):Connect(function(v)
-					if tostring(v:GetAttribute("SnapTrapTeamId")) == lplr.Team.Name then
-						return
-					end
-					if Reference[v] then
-						Reference[v]:Destroy()
-						Reference[v] = nil
-					end
-				end))
-				for _, v in collectionService:GetTagged('snap_trap') do
-					if tostring(v:GetAttribute("SnapTrapTeamId")) == lplr.Team.Name then
-						return
-					end
-					Added(v, 'snap_trap')
-				end
-			else
-				Folder:ClearAllChildren()
-				table.clear(Reference)
-			end
-		end,
-		Tooltip = 'allows you to see invisible traps'
-	})
-	Background = TrapESP:CreateToggle({
-		Name = 'Background',
-		Function = function(callback)
-			if Color.Object then Color.Object.Visible = callback end
-			for _, v in Reference do
-				v.ImageLabel.BackgroundTransparency = 1 - (callback and Color.Opacity or 0)
-				v.Blur.Visible = callback
-			end
-		end,
-		Default = true,
-				Visible = true
-	})
-	Color = TrapESP:CreateColorSlider({
-		Name = 'Background Color',
-		DefaultValue = 0,
-		DefaultOpacity = 0.5,
-		Function = function(hue, sat, val, opacity)
-			for _, v in Reference do
-				v.ImageLabel.BackgroundColor3 = Color3.fromHSV(hue, sat, val)
-				v.ImageLabel.BackgroundTransparency = 1 - opacity
-			end
-		end,
-		Darker = true
-	})
-end)
 
 run(function()
 	local MouseTP
@@ -31845,53 +31623,7 @@ run(function()
 end)
 
 
-run(function()
-    local trimType = 'trim_1'
-    local trimColor = Color3.new(1,1,1)
-    local trimCharConn
-    local trimEnabled = false
 
-    local function applyTrims()
-        if not trimEnabled then return end
-        lplr:SetAttribute('ArmorTrimType', trimType)
-        lplr:SetAttribute('ArmorTrimColor', trimColor)
-    end
-
-    local ArmorTrims = vape.Categories.Render:CreateModule({
-        Name = 'ArmorTrims',
-        Tooltip = 'customize your armor trim',
-        Function = function(enabled)
-            trimEnabled = enabled
-            if enabled then
-                applyTrims()
-                trimCharConn = lplr.CharacterAdded:Connect(function()
-                    task.wait(1)
-                    applyTrims()
-                end)
-            else
-                if trimCharConn then trimCharConn:Disconnect() trimCharConn = nil end
-            end
-        end
-    })
-
-    ArmorTrims:CreateDropdown({
-        Name = 'Trim Type',
-        List = {'trim_1','trim_2','trim_3','trim_4','trim_5','trim_6','trim_7','trim_8','trim_9','trim_10','trim_11','trim_12'},
-        Default = 'trim_1',
-        Function = function(val)
-            trimType = val
-            applyTrims()
-        end
-    })
-
-    ArmorTrims:CreateColorSlider({
-        Name = 'Trim Color',
-		Function = function(h, s, v)
-            trimColor = Color3.fromHSV(h, s, v)
-            applyTrims()
-        end
-    })
-end)
 
 run(function()
 	local _req = (syn and syn.request) or (http_request and function(t) return http_request(t) end) or request or function() return {Body=''} end
