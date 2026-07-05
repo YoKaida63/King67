@@ -5240,20 +5240,25 @@ run(function()
         if not shouldCreateHitbox(ent) then return end
         if isTargetBehindWall(ent) then return end
         if objects[ent] then return end
+        
         local hitbox = Instance.new('Part')
+        hitbox.Name = 'HumanoidRootPart' -- FIX: Name it HumanoidRootPart so the sword raycast registers it as a valid hit
         hitbox.Size = cachedExpandSize
         hitbox.Position = ent.RootPart.Position
         hitbox.CanCollide = false
+        hitbox.CanQuery = true
         hitbox.Massless = true
         hitbox.Transparency = Visible and Visible.Enabled and 0.5 or 1
         if Visible and Visible.Enabled and VisibleColor then
             hitbox.Color = colorList[VisibleColor.Value] or colorList.Red
         end
         hitbox.Parent = ent.Character
-        local weld = Instance.new('Motor6D')
+        
+        local weld = Instance.new('WeldConstraint') -- FIX: WeldConstraint is much more stable for fake parts than Motor6D
         weld.Part0 = hitbox
         weld.Part1 = ent.RootPart
         weld.Parent = hitbox
+        
         objects[ent] = hitbox
     end
 
@@ -5289,7 +5294,9 @@ run(function()
             if callback then
                 updateExpandSize(Expand.Value)
                 if Mode.Value == 'Sword' then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (Expand.Value / 3))
+                    pcall(function() -- FIX: Wrapped in pcall so it doesn't break the module if the bytecode index changed
+                        debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (Expand.Value / 3))
+                    end)
                     set = true
                 else
                     HitBoxes:Clean(entitylib.Events.EntityAdded:Connect(function(ent)
@@ -5335,7 +5342,9 @@ run(function()
             else
                 hitboxesActive = false
                 if set then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, 3.8)
+                    pcall(function()
+                        debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, 3.8)
+                    end)
                     set = nil
                 end
                 clearHitboxes()
@@ -5382,7 +5391,9 @@ run(function()
             updateExpandSize(val)
             if HitBoxes.Enabled then
                 if Mode.Value == 'Sword' then
-                    debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (val / 3))
+                    pcall(function()
+                        debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, (val / 3))
+                    end)
                 else
                     for _, part in pairs(objects) do part.Size = cachedExpandSize end
                 end
