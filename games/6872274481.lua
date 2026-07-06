@@ -32178,3 +32178,102 @@ run(function()
         end
     })
 end)
+run(function()
+    local MakePeopleusingHack
+    local TargetList
+    local HackMode
+    local SpeedValue
+    local RadiusValue
+    
+    MakePeopleusingHack = vape.Categories.Blatant:CreateModule({
+        Name = 'MakePeopleusingHack',
+        Function = function(callback)
+            if callback then
+                MakePeopleusingHack:Clean(runService.RenderStepped:Connect(function(dt)
+                    local targets = {}
+                    -- Match the player names entered in TargetList with entitylib
+                    for _, name in ipairs(TargetList.ListEnabled) do
+                        for _, ent in ipairs(entitylib.List) do
+                            if ent.Player and ent.Player.Name == name and ent.RootPart then
+                                table.insert(targets, ent)
+                            end
+                        end
+                    end
+                    
+                    for _, ent in ipairs(targets) do
+                        local root = ent.RootPart
+                        local hum = ent.Humanoid
+                        if root and hum and hum.Health > 0 then
+                            local mode = HackMode.Value
+                            if mode == 'Fly' then
+                                -- Force the player upward into the air
+                                root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, SpeedValue.Value, root.AssemblyLinearVelocity.Z)
+                                root.CFrame = root.CFrame + Vector3.new(0, SpeedValue.Value * dt, 0)
+
+                            elseif mode == 'Spin' then
+                                -- Make the player spin rapidly like a top
+                                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(SpeedValue.Value * dt * 5), 0)
+
+                            elseif mode == 'Orbit' then
+                                -- Force the player to orbit around you like a satellite
+                                if entitylib.isAlive and entitylib.character.RootPart then
+                                    local myPos = entitylib.character.RootPart.Position
+                                    local angle = tick() * (SpeedValue.Value / 20)
+                                    local offset = CFrame.new(math.cos(angle) * RadiusValue.Value, 5, math.sin(angle) * RadiusValue.Value)
+                                    root.CFrame = CFrame.new(myPos) * offset
+                                end
+
+                            elseif mode == 'Shake' then
+                                -- Shake the player violently to create a panicked effect
+                                local shake = Vector3.new(
+                                    (math.random() - 0.5) * SpeedValue.Value,
+                                    (math.random() - 0.5) * SpeedValue.Value,
+                                    (math.random() - 0.5) * SpeedValue.Value
+                                )
+                                root.CFrame = root.CFrame + shake * dt
+
+                            elseif mode == 'PushAway' then
+                                -- Push the player away from you
+                                if entitylib.isAlive and entitylib.character.RootPart then
+                                    local dir = (root.Position - entitylib.character.RootPart.Position).Unit
+                                    root.AssemblyLinearVelocity = dir * SpeedValue.Value
+                                end
+                            end
+                        end
+                    end
+                end))
+            end
+        end,
+        Tooltip = 'Client-sided visual hack to make selected players look like they are cheating'
+    })
+    
+    TargetList = MakePeopleusingHack:CreateTextList({
+        Name = 'Target Players',
+        Placeholder = 'username',
+    })
+    
+    HackMode = MakePeopleusingHack:CreateDropdown({
+        Name = 'Hack Mode',
+        List = {'Fly', 'Spin', 'Orbit', 'Shake', 'PushAway'},
+        Default = 'Fly',
+        Tooltip = 'Fly: Upward | Spin: Rotate | Orbit: Circle around you | Shake: Jitter | PushAway: Repel'
+    })
+    
+    SpeedValue = MakePeopleusingHack:CreateSlider({
+        Name = 'Speed / Intensity',
+        Min = 1,
+        Max = 200,
+        Default = 50,
+    })
+    
+    RadiusValue = MakePeopleusingHack:CreateSlider({
+        Name = 'Orbit Radius',
+        Min = 5,
+        Max = 50,
+        Default = 15,
+        Suffix = function(val)
+            return val == 1 and 'stud' or 'studs'
+        end
+    })
+end)
+
