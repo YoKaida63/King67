@@ -4865,7 +4865,8 @@ run(function()
     local Visible
     local VisibleColor
     local Targets
-    local objects, set = {}, {}
+    local objects = {}
+    local set = false
     local hitboxesActive = false
     local autoToggleConnection = nil
     local autoToggleFrameCounter = 0
@@ -4898,6 +4899,7 @@ run(function()
     local function isTargetBehindWall(ent)
         if not Targets or not Targets.Walls or not Targets.Walls.Enabled then return false end
         if not ent.RootPart then return false end
+        if not entitylib.isAlive or not entitylib.character or not entitylib.character.RootPart then return false end
         local origin = entitylib.character.RootPart.Position
         local target = ent.RootPart.Position
         local direction = target - origin
@@ -4938,6 +4940,11 @@ run(function()
         weld.Part0 = hitbox
         weld.Part1 = ent.RootPart
         weld.Parent = hitbox
+        local ev = Instance.new('ObjectValue')
+        ev.Name = 'EntityValue'
+        ev.Value = ent.Character
+        ev.Parent = hitbox
+        game:GetService('CollectionService'):AddTag(hitbox, 'Hitbox')
         objects[ent] = hitbox
     end
 
@@ -4989,6 +4996,16 @@ run(function()
                     end))
                     if AutoToggle and AutoToggle.Enabled then
                         handleAutoToggle()
+                        if not autoToggleConnection or not autoToggleConnection.Connected then
+                            autoToggleFrameCounter = 0
+                            autoToggleConnection = runService.Heartbeat:Connect(function()
+                                autoToggleFrameCounter = autoToggleFrameCounter + 1
+                                if autoToggleFrameCounter % 5 == 0 then
+                                    handleAutoToggle()
+                                end
+                            end)
+                            HitBoxes:Clean(autoToggleConnection)
+                        end
                     else
                         refreshAllHitboxes()
                     end
@@ -5020,12 +5037,12 @@ run(function()
                 hitboxesActive = false
                 if set then
                     debug.setconstant(bedwars.SwordController.swingSwordInRegion, 6, 3.8)
-                    set = nil
+                    set = false
                 end
                 clearHitboxes()
             end
         end,
-        Tooltip = 'Expands attack hitbox'
+        Tooltip = 'increases attack hitbox'
     })
 
     Targets = HitBoxes:CreateTargets({
@@ -5053,7 +5070,6 @@ run(function()
             if VisibleColor then VisibleColor.Object.Visible = isPlayer and Visible.Enabled end
             if HitBoxes.Enabled then HitBoxes:Toggle() HitBoxes:Toggle() end
         end,
-        Tooltip = 'Sword - Increases the range around you to hit entities\nPlayer - Increases the players hitbox'
     })
 
     Expand = HitBoxes:CreateSlider({
@@ -5080,7 +5096,7 @@ run(function()
     AutoToggle = HitBoxes:CreateToggle({
         Name = 'Auto Toggle',
         Default = false,
-        Tooltip = 'Automatically enables hitbox when holding a sword',
+        Tooltip = 'enables hitbox when holding sword, disable when not',
         Function = function(callback)
             if callback then
                 if autoToggleConnection then autoToggleConnection:Disconnect() end
@@ -5110,7 +5126,6 @@ run(function()
     Visible = HitBoxes:CreateToggle({
         Name = 'Visible',
         Default = false,
-        Tooltip = 'Makes the hitbox visible on screen',
         Function = function(callback)
             if VisibleColor then VisibleColor.Object.Visible = callback end
             if HitBoxes.Enabled and Mode.Value == 'Player' then
@@ -5129,7 +5144,6 @@ run(function()
         List = {'Red', 'Blue', 'Green', 'Yellow', 'Orange', 'Purple', 'White', 'Cyan', 'Pink', 'Black'},
         Default = 'Red',
         Visible = false,
-        Tooltip = 'Color of the visible hitbox',
         Function = function(val)
             if HitBoxes.Enabled and Mode.Value == 'Player' and Visible.Enabled then
                 local col = colorList[val] or colorList.Red
@@ -5151,6 +5165,7 @@ run(function()
         end
     end)
 end)
+	
 	
 run(function()
 	vape.Categories.Blatant:CreateModule({
