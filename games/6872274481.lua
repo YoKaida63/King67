@@ -4,7 +4,7 @@ if not ok then
 warn('[KingV4] module failed to load: ' .. tostring(err))
 end
 end
-})
+
 getgenv().vapeEvents = vapeEvents
 
 local cloneref = cloneref or function(obj)
