@@ -31734,3 +31734,111 @@ run(function()
     FOVThickness = SilentAim:CreateSlider({Name = 'FOV Thickness', Min = 1, Max = 5, Default = 1})
     FOVTransparency = SilentAim:CreateSlider({Name = 'FOV Transparency', Min = 0, Max = 1, Default = 0.5, Decimal = 10})
 end)
+run(function()
+    local AutoTerra
+    local Aimbot
+    local AutoStomp
+    local AutoKick
+    local Range
+    local FOV
+    
+    local function getClosestEnemy()
+        if not entitylib.isAlive then return nil end
+        local myPos = entitylib.character.RootPart.Position
+        local closest, closestDist = nil, Range.Value
+        local fovRadius = math.tan(math.rad(FOV.Value / 2))
+
+        for _, ent in ipairs(entitylib.List) do
+            if ent.Targetable and ent.RootPart and ent.Character and ent.Character.Parent then
+                local dist = (ent.RootPart.Position - myPos).Magnitude
+                if dist <= closestDist then
+                    -- FOV Check
+                    local screenPos, onScreen = gameCamera:WorldToViewportPoint(ent.RootPart.Position)
+                    if onScreen then
+                        local centerX = gameCamera.ViewportSize.X / 2
+                        local centerY = gameCamera.ViewportSize.Y / 2
+                        local dx = (screenPos.X - centerX) / gameCamera.ViewportSize.X
+                        local dy = (screenPos.Y - centerY) / gameCamera.ViewportSize.Y
+                        local screenDist = math.sqrt(dx * dx + dy * dy)
+
+                        if screenDist <= fovRadius then
+                            closestDist = dist
+                            closest = ent
+                        end
+                    end
+                end
+            end
+        end
+        return closest
+    end
+
+    AutoTerra = vape.Categories.Kits:CreateModule({
+        Name = 'AutoTerra',
+        Function = function(callback)
+            if callback then
+                AutoTerra:Clean(runService.Heartbeat:Connect(function()
+                    if not entitylib.isAlive then return end
+                    
+                    -- Optional: Only run if Terra kit is equipped
+                    if store.equippedKit and store.equippedKit ~= 'terra' then return end
+
+                    local target = getClosestEnemy()
+                    if not target then return end
+
+                    -- Aimbot logic: Snaps camera to target
+                    if Aimbot.Enabled then
+                        local targetPos = target.RootPart.Position
+                        local currentCFrame = gameCamera.CFrame
+                        local targetCFrame = CFrame.lookAt(currentCFrame.Position, targetPos)
+                        gameCamera.CFrame = targetCFrame
+                    end
+
+                    -- Auto Stomp (AoE slam, facing target ensures optimal knockback direction)
+                    if AutoStomp.Enabled and bedwars.AbilityController:canUseAbility('TERRA_STOMP') then
+                        bedwars.AbilityController:useAbility('TERRA_STOMP')
+                    end
+
+                    -- Auto Kick (Requires looking at the enemy to connect)
+                    if AutoKick.Enabled and bedwars.AbilityController:canUseAbility('TERRA_KICK') then
+                        bedwars.AbilityController:useAbility('TERRA_KICK', nil, {target = target.Character})
+                    end
+                end))
+            end
+        end,
+        Tooltip = 'Aimbot and auto-abilities for Terra kit'
+    })
+
+    Aimbot = AutoTerra:CreateToggle({
+        Name = 'Aimbot', 
+        Default = true, 
+        Tooltip = 'Snaps camera to nearest enemy for perfect kicks'
+    })
+    
+    AutoStomp = AutoTerra:CreateToggle({
+        Name = 'Auto Stomp', 
+        Default = true, 
+        Tooltip = 'Auto uses Terra Stomp when ready'
+    })
+    
+    AutoKick = AutoTerra:CreateToggle({
+        Name = 'Auto Kick', 
+        Default = true, 
+        Tooltip = 'Auto uses Terra Kick on the targeted enemy'
+    })
+    
+    Range = AutoTerra:CreateSlider({
+        Name = 'Range', 
+        Min = 1, 
+        Max = 50, 
+        Default = 20, 
+        Suffix = ' studs'
+    })
+    
+    FOV = AutoTerra:CreateSlider({
+        Name = 'FOV', 
+        Min = 1, 
+        Max = 360, 
+        Default = 180,
+        Tooltip = 'Field of view for the aimbot'
+    })
+end)
