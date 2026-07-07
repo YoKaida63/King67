@@ -31572,3 +31572,165 @@ run(function()
         Tooltip = 'Distance from bed to auto-patch blocks'
     })
 end)
+run(function()
+    local SilentAim
+    local FOV
+    local Range
+    local HitChance
+    local WallCheck
+    local TargetPlayers
+    local TargetNPCs
+    local ShowFOV
+    local FOVColor
+    local FOVThickness
+    local FOVTransparency
+
+    local oldNamecall
+    local oldRaycast
+    local FOVCircle
+
+    -- Get the closest valid target within FOV
+    local function getClosestTarget(origin)
+        local closest, closestDist = nil, math.huge
+        local fovRadius = math.tan(math.rad(FOV.Value / 2))
+
+        for _, ent in ipairs(entitylib.List) do
+            if (TargetPlayers.Enabled and ent.Player) or (TargetNPCs.Enabled and ent.NPC) then
+                if ent.Targetable and ent.RootPart and ent.Character and ent.Character.Parent then
+                    local hum = ent.Character:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then
+                        local dist = (ent.RootPart.Position - origin).Magnitude
+                        if dist <= Range.Value then
+                            -- FOV Check
+                            local screenPos, onScreen = gameCamera:WorldToViewportPoint(ent.RootPart.Position)
+                            if onScreen then
+                                local centerX = gameCamera.ViewportSize.X / 2
+                                local centerY = gameCamera.ViewportSize.Y / 2
+                                local dx = (screenPos.X - centerX) / gameCamera.ViewportSize.X
+                                local dy = (screenPos.Y - centerY) / gameCamera.ViewportSize.Y
+                                local screenDist = math.sqrt(dx * dx + dy * dy)
+
+                                if screenDist <= fovRadius then
+                                    if dist < closestDist then
+                                        closestDist = dist
+                                        closest = ent
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return closest
+    end
+
+    -- Check if there is a wall between you and the target
+    local function wallCheck(origin, targetPos)
+        if not WallCheck.Enabled then return true end
+        local direction = targetPos - origin
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
+
+        local result = workspace:Raycast(origin, direction, rayParams)
+        return not result
+    end
+
+    SilentAim = vape.Categories.Combat:CreateModule({
+        Name = 'SilentAim',
+        Function = function(callback)
+            if callback then
+                -- Create FOV Circle
+                FOVCircle = Drawing.new('Circle')
+                FOVCircle.Visible = ShowFOV.Enabled
+                FOVCircle.Thickness = FOVThickness.Value
+                FOVCircle.NumSides = 100
+                FOVCircle.Radius = FOV.Value
+                FOVCircle.Filled = false
+                FOVCircle.Color = Color3.fromHSV(FOVColor.Hue, FOVColor.Sat, FOVColor.Value)
+                FOVCircle.Transparency = 1 - FOVTransparency.Value
+
+                -- Hook Workspace:Raycast (Modern Bedwars attacks)
+                oldRaycast = hookfunction(workspace.Raycast, newcclosure(function(self, origin, direction, params)
+                    if checkcaller() then return oldRaycast(self, origin, direction, params) end
+
+                    local target = getClosestTarget(origin)
+                    if target then
+                        if wallCheck(origin, target.RootPart.Position) then
+                            if math.random(1, 100) <= HitChance.Value then
+                                local newDirection = CFrame.lookAt(origin, target.RootPart.Position).LookVector * direction.Magnitude
+                                return oldRaycast(self, origin, newDirection, params)
+                            end
+                        end
+                    end
+                    return oldRaycast(self, origin, direction, params)
+                end))
+
+                -- Hook __namecall (Legacy/FindPartOnRay attacks)
+                oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+                    local method = getnamecallmethod()
+                    if checkcaller() then return oldNamecall(self, ...) end
+
+                    if method == "Raycast" or method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" then
+                        local args = {...}
+                        local origin = args[1]
+                        local target = getClosestTarget(origin)
+
+                        if target then
+                            if wallCheck(origin, target.RootPart.Position) then
+                                if math.random(1, 100) <= HitChance.Value then
+                                    if method == "Raycast" then
+                                        args[2] = CFrame.lookAt(origin, target.RootPart.Position).LookVector * args[2].Magnitude
+                                        return oldNamecall(self, unpack(args))
+                                    elseif method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" then
+                                        local ray = args[1]
+                                        local newRay = Ray.new(origin, CFrame.lookAt(origin, target.RootPart.Position).LookVector * ray.Direction.Magnitude)
+                                        args[1] = newRay
+                                        return oldNamecall(self, unpack(args))
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    return oldNamecall(self, ...)
+                end))
+
+                -- Render FOV Circle
+                SilentAim:Clean(runService.RenderStepped:Connect(function()
+                    if FOVCircle and ShowFOV.Enabled then
+                        FOVCircle.Position = Vector2.new(gameCamera.ViewportSize.X / 2, gameCamera.ViewportSize.Y / 2)
+                    end
+                end))
+            else
+                -- Cleanup hooks and drawings
+                if oldRaycast then hookfunction(workspace.Raycast, oldRaycast) end
+                if oldNamecall then hookmetamethod(game, "__namecall", oldNamecall) end
+                if FOVCircle then FOVCircle:Remove() end
+                oldRaycast, oldNamecall, FOVCircle = nil, nil, nil
+            end
+        end,
+        Tooltip = 'Silently aims at enemies without moving your camera'
+    })
+
+    -- UI Elements
+    FOV = SilentAim:CreateSlider({Name = 'FOV', Min = 1, Max = 360, Default = 90})
+    Range = SilentAim:CreateSlider({Name = 'Range', Min = 1, Max = 200, Default = 50, Suffix = ' studs'})
+    HitChance = SilentAim:CreateSlider({Name = 'Hit Chance', Min = 0, Max = 100, Default = 100, Suffix = '%'})
+
+    WallCheck = SilentAim:CreateToggle({Name = 'Wall Check', Default = true})
+    TargetPlayers = SilentAim:CreateToggle({Name = 'Target Players', Default = true})
+    TargetNPCs = SilentAim:CreateToggle({Name = 'Target NPCs', Default = false})
+
+    ShowFOV = SilentAim:CreateToggle({
+        Name = 'Show FOV',
+        Default = true,
+        Function = function(callback)
+            if FOVCircle then FOVCircle.Visible = callback end
+        end
+    })
+
+    FOVColor = SilentAim:CreateColorSlider({Name = 'FOV Color', DefaultHue = 0.6, DefaultSat = 1, DefaultValue = 1})
+    FOVThickness = SilentAim:CreateSlider({Name = 'FOV Thickness', Min = 1, Max = 5, Default = 1})
+    FOVTransparency = SilentAim:CreateSlider({Name = 'FOV Transparency', Min = 0, Max = 1, Default = 0.5, Decimal = 10})
+end)
