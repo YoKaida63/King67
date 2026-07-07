@@ -1,20 +1,4 @@
---[[
-
-  $$$$$$$\                            $$\                           $$\    $$\                              
-  $$  __$$\                           $$ |                          $$ |   $$ |                             
-  $$ |  $$ | $$$$$$\  $$$$$$$\   $$$$$$$ | $$$$$$\   $$$$$$\        $$ |   $$ |$$$$$$\   $$$$$$\   $$$$$$\  
-  $$$$$$$  |$$  __$$\ $$  __$$\ $$  __$$ |$$  __$$\ $$  __$$\       \$$\  $$  |\____$$\ $$  __$$\ $$  __$$\ 
-  $$  __$$< $$$$$$$$ |$$ |  $$ |$$ /  $$ |$$$$$$$$ |$$ |  \__|       \$$\$$  / $$$$$$$ |$$ /  $$ |$$$$$$$$ |
-  $$ |  $$ |$$   ____|$$ |  $$ |$$ |  $$ |$$   ____|$$ |              \$$$  / $$  __$$ |$$ |  $$ |$$   ____|
-  $$ |  $$ |\$$$$$$$\ $$ |  $$ |\$$$$$$$ |\$$$$$$$\ $$ |               \$  /  \$$$$$$$ |$$$$$$$  |\$$$$$$$\ 
-  \__|  \__| \_______|\__|  \__| \_______| \_______|\__|                \_/    \_______|$$  ____/  \_______|
-                                                                                      $$ |                
-                                                                                      $$ |                
-                                                                                      \__|   
-   A very sexy and overpowered vape mod created at Render Intents  
-   /lib/ramcleaner.lua - SystemXVoid/BlankedVoid            
-   https://renderintents.xyz                                                                                                                                                                                                                                                                     
-]]
+--Kingify performence.lua so tuff gng
    
 local Performance: table = {};
 Performance.__index = Performance;
@@ -64,77 +48,25 @@ function Performance.new(args: table | nil, nocachearray: boolean | nil): table
         }
     });
 
-    -- FIX 1: Use a lightweight metatable for the cache array instead of spawning a whole new Performance instance.
-    -- This stops the massive thread leak that was slowing down your loading.
-    local cachearray: table = setmetatable({}, {
-        __index = function(self, index)
-            local val = rawget(self, index)
-            if val ~= nil then return val end
-            local t = tick()
-            rawset(self, index, t)
-            return t
+    local cachearray: table = nocachearray and setmetatable({}, {}) or Performance.new(nil, true);
+    
+    -- OPTIMIZATION 1: Use os.clock() (much faster than tick) and throttle updates to once per second
+    getmetatable(cachearray).__index = function(self: table, index: any)
+        local val = rawget(self, index)
+        if val ~= nil then
+            if os.clock() - val > 1 then
+                rawset(self, index, os.clock())
+            end
+            return val
         end
-    });
-
-    local cleanerthread: thread = task.spawn(function()
-        local jobdelay = args.jobdelay and tonumber(args.jobdelay) or 5;
-        local maxamount = args.maxamount and tonumber(args.maxamount) or 4000;
-        local maxdir = args.maxdir and tonumber(args.maxdir) or 60;
-        
-        repeat 
-            -- FIX 2: Chunked iteration. Processes 1000 items per frame to prevent freezing/lag spikes.
-            local processed = 0;
-            local chunkSize = 1000;
-            
-            for i, v in array do
-                processed += 1;
-                iter += 1;
-                
-                if mode == 1 then
-                    if (typeof(v) == 'Instance' and v.Parent == nil) or (typeof(i) == 'Instance' and i.Parent == nil) then 
-                        array[i] = nil;
-                        cachearray[i] = nil;
-                        cleanerevent:Fire(v, i);
-                    end;
-                elseif mode == 2 then
-                    if iter > maxamount then 
-                        array[i] = nil;
-                        cachearray[i] = nil;
-                        if args.purge then 
-                            table.clear(array);
-                            table.clear(cachearray);
-                            cleanerevent:Fire();
-                        else
-                            cleanerevent:Fire(v, i);
-                        end;
-                    end;
-                elseif mode == 3 then
-                    if (tick() - cachearray[i]) >= maxdir then 
-                        array[i] = nil;
-                        cachearray[i] = nil;
-                        cleanerevent:Fire(v, i);
-                        if args.purge then 
-                            table.clear(array);
-                            table.clear(cachearray);
-                            cleanerevent:Fire();
-                        end;
-                    end;
-                end;
-                
-                -- Yield to the next frame if we hit the chunk limit
-                if processed >= chunkSize then
-                    task.wait();
-                    processed = 0;
-                end
-            end;
-            task.wait(jobdelay);
-        until false;
-    end);
+        local t = os.clock()
+        rawset(self, index, t)
+        return t
+    end;
 
     meta.__index = function(self: table, index: string?)
         local data: any = rawget(self, index);
         if data ~= nil then 
-            cachearray[index] = tick();
             return data
         end; 
         return meta[index]
@@ -156,15 +88,15 @@ function Performance.new(args: table | nil, nocachearray: boolean | nil): table
     end;
 
     meta.clear = function(self: table, func: (object: any, index: any) -> ()?)
-        assert(func == nil or typeof(func) == 'function', `function expected for argument #
-    for i,v in array do 
-        array[i] = nil;
-        if func then 
-            task.spawn(func, v, i);
+        assert(func == nil or typeof(func) == 'function', `function expected for argument #1, got {typeof(func)}`);
+        for i,v in array do 
+            array[i] = nil;
+            if func then 
+                task.spawn(func, v, i);
+            end;
         end;
+        table.clear(cachearray);
     end;
-    table.clear(cachearray);
-end;
 
     meta.getplainarray = function(self: table)
         local tab: table = {};
@@ -182,6 +114,46 @@ end;
         table.clear(onclean);
         onclean = nil;
     end;
+
+    -- OPTIMIZATION 2: Chunked loop so it doesn't freeze the game when the table gets huge
+    local cleanerthread: thread = task.spawn(function()
+        local jobdelay = args.jobdelay and tonumber(args.jobdelay) or 5
+        local chunkSize = 500 -- Process max 500 items per frame
+        repeat 
+            local processed = 0
+            for i: Instance | number?, v: Instance? in array do
+                processed += 1
+                iter += 1;
+                
+                if mode == 1 and (typeof(v) == 'Instance' and v.Parent == nil or typeof(i) == 'Instance' and i.Parent == nil) then 
+                    array[i] = nil;
+                    cachearray[i] = nil;
+                    cleanerevent:Fire(v, i);
+                elseif mode == 2 and iter > (args.maxamount and tonumber(args.maxamount) or 4000) then 
+                    array[i] = nil;
+                    cachearray[i] = nil;
+                    if args.purge then 
+                        table.clear(array)
+                        table.clear(cachearray)
+                        cleanerevent:Fire();
+                    else
+                        cleanerevent:Fire(v, i);
+                    end;
+                elseif mode == 3 and cachearray[i] and (os.clock() - cachearray[i]) >= (args.maxdir and tonumber(args.maxdir) or 60) then 
+                    array[i] = nil;
+                    cachearray[i] = nil;
+                    cleanerevent:Fire(v, i);
+                end;
+                
+                -- Yield to the next frame if we hit the chunk limit to keep FPS high
+                if processed >= chunkSize then
+                    task.wait()
+                    processed = 0
+                end
+            end;
+            task.wait(mode == 3 and 0 or jobdelay);
+        until false;
+    end);
 
     return array
 end;
