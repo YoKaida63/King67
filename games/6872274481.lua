@@ -1,10 +1,16 @@
-local run = function(func)
-local ok, err = pcall(func)
-if not ok then
-warn('[KingV4] module failed to load: ' .. tostring(err))
-end
-end
 
+local run = function(func)
+    local ok, err = pcall(func)
+    if not ok then
+        warn('[KingV4] module failed to load: ' .. tostring(err))
+    end
+end
+local vapeEvents = setmetatable({}, {
+	__index = function(self, index)
+		self[index] = Instance.new('BindableEvent')
+		return self[index]
+	end
+})
 getgenv().vapeEvents = vapeEvents
 
 local cloneref = cloneref or function(obj)
@@ -2584,7 +2590,387 @@ run(function()
     })
     Check = AntiLasso:CreateToggle({Name = 'Only when targeting'})
 end)
+				run(function()
+	local SilentAim
+	local Target
+	local Mode
+	local Method
+	local MethodRay
+	local IgnoredScripts
+	local Range
+	local HitChance
+	local HeadshotChance
+	local AutoFire
+	local AutoFireShootDelay
+	local AutoFireMode
+	local AutoFirePosition
+	local Wallbang
+	local CircleColor
+	local CircleTransparency
+	local CircleFilled
+	local CircleObject
+	local Projectile
+	local ProjectileSpeed
+	local ProjectileGravity
+	local RaycastWhitelist = RaycastParams.new()
+	RaycastWhitelist.FilterType = Enum.RaycastFilterType.Include
+	local ProjectileRaycast = RaycastParams.new()
+	ProjectileRaycast.RespectCanCollide = true
+	local fireoffset, rand, delayCheck = CFrame.identity, Random.new(), tick()
+	local oldnamecall, oldray, silentAimMouseClicked
 
+	local function getTarget(origin, obj)
+		if rand.NextNumber(rand, 0, 100) > (AutoFire.Enabled and 100 or HitChance.Value) then return end
+		local targetPart = (rand.NextNumber(rand, 0, 100) < (AutoFire.Enabled and 100 or HeadshotChance.Value)) and 'Head' or 'RootPart'
+		local ent = entitylib['Entity'..Mode.Value]({
+			Range = Range.Value,
+			Wallcheck = Target.Walls.Enabled and (obj or true) or nil,
+			Part = targetPart,
+			Origin = origin,
+			Players = Target.Players.Enabled,
+			NPCs = Target.NPCs.Enabled
+		})
+
+		if ent then
+			targetinfo.Targets[ent] = tick() + 1
+			if Projectile.Enabled then
+				ProjectileRaycast.FilterDescendantsInstances = {gameCamera, ent.Character}
+				ProjectileRaycast.CollisionGroup = ent[targetPart].CollisionGroup
+			end
+		end
+
+		return ent, ent and ent[targetPart], origin
+	end
+
+	local Hooks = {
+		FindPartOnRayWithIgnoreList = function(args)
+			local ent, targetPart, origin = getTarget(args[1].Origin, {args[2]})
+			if not ent then return end
+			if Wallbang.Enabled then
+				return {targetPart, targetPart.Position, targetPart.GetClosestPointOnSurface(targetPart, origin), targetPart.Material}
+			end
+			args[1] = Ray.new(origin, CFrame.lookAt(origin, targetPart.Position).LookVector * args[1].Direction.Magnitude)
+		end,
+		Raycast = function(args)
+			if MethodRay.Value ~= 'All' and args[3] and args[3].FilterType ~= Enum.RaycastFilterType[MethodRay.Value] then return end
+			local ent, targetPart, origin = getTarget(args[1])
+			if not ent then return end
+			args[2] = CFrame.lookAt(origin, targetPart.Position).LookVector * args[2].Magnitude
+			if Wallbang.Enabled then
+				RaycastWhitelist.FilterDescendantsInstances = {targetPart}
+				args[3] = RaycastWhitelist
+			end
+		end,
+		ScreenPointToRay = function(args)
+			local ent, targetPart, origin = getTarget(gameCamera.CFrame.Position)
+			if not ent then return end
+			local direction = CFrame.lookAt(origin, targetPart.Position)
+			if Projectile.Enabled then
+				local calc = prediction.SolveTrajectory(origin, ProjectileSpeed.Value, ProjectileGravity.Value, targetPart.Position, targetPart.Velocity, workspace.Gravity, ent.HipHeight, nil, ProjectileRaycast)
+				if not calc then return end
+				direction = CFrame.lookAt(origin, calc)
+			end
+			return {Ray.new(origin + (args[3] and direction.LookVector * args[3] or Vector3.zero), direction.LookVector)}
+		end,
+		Ray = function(args)
+			local ent, targetPart, origin = getTarget(args[1])
+			if not ent then return end
+			if Projectile.Enabled then
+				local calc = prediction.SolveTrajectory(origin, ProjectileSpeed.Value, ProjectileGravity.Value, targetPart.Position, targetPart.Velocity, workspace.Gravity, ent.HipHeight, nil, ProjectileRaycast)
+				if not calc then return end
+				args[2] = CFrame.lookAt(origin, calc).LookVector * args[2].Magnitude
+			else
+				args[2] = CFrame.lookAt(origin, targetPart.Position).LookVector * args[2].Magnitude
+			end
+		end
+	}
+	Hooks.FindPartOnRayWithWhitelist = Hooks.FindPartOnRayWithIgnoreList
+	Hooks.FindPartOnRay = Hooks.FindPartOnRayWithIgnoreList
+	Hooks.ViewportPointToRay = Hooks.ScreenPointToRay
+
+	SilentAim = vape.Categories.Combat:CreateModule({
+		Name = 'SilentAim',
+		Function = function(callback)
+			if CircleObject then
+				CircleObject.Visible = callback and Mode.Value == 'Mouse'
+			end
+			if callback then
+				if Method.Value == 'Ray' then
+					oldray = hookfunction(Ray.new, function(origin, direction)
+						if checkcaller() then
+							return oldray(origin, direction)
+						end
+						local calling = getcallingscript()
+
+						if calling then
+							local list = #IgnoredScripts.ListEnabled > 0 and IgnoredScripts.ListEnabled or {'ControlScript', 'ControlModule'}
+							if table.find(list, tostring(calling)) then
+								return oldray(origin, direction)
+							end
+						end
+
+						local args = {origin, direction}
+						Hooks.Ray(args)
+						return oldray(unpack(args))
+					end)
+				else
+					oldnamecall = hookmetamethod(game, '__namecall', function(...)
+						if getnamecallmethod() ~= Method.Value then
+							return oldnamecall(...)
+						end
+						if checkcaller() then
+							return oldnamecall(...)
+						end
+
+						local calling = getcallingscript()
+						if calling then
+							local list = #IgnoredScripts.ListEnabled > 0 and IgnoredScripts.ListEnabled or {'ControlScript', 'ControlModule'}
+							if table.find(list, tostring(calling)) then
+								return oldnamecall(...)
+							end
+						end
+
+						local self, args = ..., {select(2, ...)}
+						local res = Hooks[Method.Value](args)
+						if res then
+							return unpack(res)
+						end
+						return oldnamecall(self, unpack(args))
+					end)
+				end
+
+				repeat
+					if CircleObject then
+						CircleObject.Position = inputService:GetMouseLocation()
+					end
+					if AutoFire.Enabled then
+						local origin = AutoFireMode.Value == 'Camera' and gameCamera.CFrame or entitylib.isAlive and entitylib.character.RootPart.CFrame or CFrame.identity
+						local ent = entitylib['Entity'..Mode.Value]({
+							Range = Range.Value,
+							Wallcheck = Target.Walls.Enabled or nil,
+							Part = 'Head',
+							Origin = (origin * fireoffset).Position,
+							Players = Target.Players.Enabled,
+							NPCs = Target.NPCs.Enabled
+						})
+
+						if mouse1click and (isrbxactive or iswindowactive)() then
+							if ent and canClick() then
+								if delayCheck < tick() then
+									if silentAimMouseClicked then
+										mouse1release()
+										delayCheck = tick() + AutoFireShootDelay.Value
+									else
+										mouse1press()
+									end
+									silentAimMouseClicked = not silentAimMouseClicked
+								end
+							else
+								if silentAimMouseClicked then
+									mouse1release()
+								end
+								silentAimMouseClicked = false
+							end
+						end
+					end
+					task.wait()
+				until not SilentAim.Enabled
+			else
+				if oldnamecall then
+					hookmetamethod(game, '__namecall', oldnamecall)
+				end
+				if oldray then
+					hookfunction(Ray.new, oldray)
+				end
+				oldnamecall, oldray = nil, nil
+			end
+		end,
+		ExtraText = function()
+			return Method.Value:gsub('FindPartOnRay', '')
+		end,
+		Tooltip = 'Silently adjusts your aim towards the enemy'
+	})
+	Target = SilentAim:CreateTargets({Players = true})
+	Mode = SilentAim:CreateDropdown({
+		Name = 'Mode',
+		List = {'Mouse', 'Position'},
+		Function = function(val)
+			if CircleObject then
+				CircleObject.Visible = SilentAim.Enabled and val == 'Mouse'
+			end
+		end,
+		Tooltip = 'Mouse - Checks for entities near the mouses position\nPosition - Checks for entities near the local character'
+	})
+	Method = SilentAim:CreateDropdown({
+		Name = 'Method',
+		List = {'FindPartOnRay', 'FindPartOnRayWithIgnoreList', 'FindPartOnRayWithWhitelist', 'ScreenPointToRay', 'ViewportPointToRay', 'Raycast', 'Ray'},
+		Function = function(val)
+			if SilentAim.Enabled then
+				SilentAim:Toggle()
+				SilentAim:Toggle()
+			end
+			MethodRay.Object.Visible = val == 'Raycast'
+		end,
+		Tooltip = 'FindPartOnRay* - Deprecated methods of raycasting used in old games\nRaycast - The modern raycast method\nPointToRay - Method to generate a ray from screen coords\nRay - Hooking Ray.new'
+	})
+	MethodRay = SilentAim:CreateDropdown({
+		Name = 'Raycast Type',
+		List = {'All', 'Exclude', 'Include'},
+		Darker = true,
+		Visible = false
+	})
+	IgnoredScripts = SilentAim:CreateTextList({Name = 'Ignored Scripts'})
+	Range = SilentAim:CreateSlider({
+		Name = 'Range',
+		Min = 1,
+		Max = 1000,
+		Default = 150,
+		Function = function(val)
+			if CircleObject then
+				CircleObject.Radius = val
+			end
+		end,
+		Suffix = function(val)
+			return val == 1 and 'stud' or 'studs'
+		end
+	})
+	HitChance = SilentAim:CreateSlider({
+		Name = 'Hit Chance',
+		Min = 0,
+		Max = 100,
+		Default = 85,
+		Suffix = '%'
+	})
+	HeadshotChance = SilentAim:CreateSlider({
+		Name = 'Headshot Chance',
+		Min = 0,
+		Max = 100,
+		Default = 65,
+		Suffix = '%'
+	})
+	AutoFire = SilentAim:CreateToggle({
+		Name = 'AutoFire',
+		Function = function(callback)
+			AutoFireShootDelay.Object.Visible = callback
+			AutoFireMode.Object.Visible = callback
+			AutoFirePosition.Object.Visible = callback
+		end
+	})
+	AutoFireShootDelay = SilentAim:CreateSlider({
+		Name = 'Next Shot Delay',
+		Min = 0,
+		Max = 1,
+		Decimal = 100,
+		Visible = false,
+		Darker = true,
+		Suffix = function(val)
+			return val == 1 and 'second' or 'seconds'
+		end
+	})
+	AutoFireMode = SilentAim:CreateDropdown({
+		Name = 'Origin',
+		List = {'RootPart', 'Camera'},
+		Visible = false,
+		Darker = true,
+		Tooltip = 'Determines the position to check for before shooting'
+	})
+	AutoFirePosition = SilentAim:CreateTextBox({
+		Name = 'Offset',
+		Function = function()
+			local suc, res = pcall(function()
+				return CFrame.new(unpack(AutoFirePosition.Value:split(',')))
+			end)
+			if suc then fireoffset = res end
+		end,
+		Default = '0, 0, 0',
+		Visible = false,
+		Darker = true
+	})
+	Wallbang = SilentAim:CreateToggle({Name = 'Wallbang'})
+	SilentAim:CreateToggle({
+		Name = 'Range Circle',
+		Function = function(callback)
+			if callback then
+				CircleObject = Drawing.new('Circle')
+				CircleObject.Filled = CircleFilled.Enabled
+				CircleObject.Color = Color3.fromHSV(CircleColor.Hue, CircleColor.Sat, CircleColor.Value)
+				CircleObject.Position = vape.gui.AbsoluteSize / 2
+				CircleObject.Radius = Range.Value
+				CircleObject.NumSides = 100
+				CircleObject.Transparency = 1 - CircleTransparency.Value
+				CircleObject.Visible = SilentAim.Enabled and Mode.Value == 'Mouse'
+			else
+				pcall(function()
+					CircleObject.Visible = false
+					CircleObject:Remove()
+				end)
+			end
+			CircleColor.Object.Visible = callback
+			CircleTransparency.Object.Visible = callback
+			CircleFilled.Object.Visible = callback
+		end
+	})
+	CircleColor = SilentAim:CreateColorSlider({
+		Name = 'Circle Color',
+		Function = function(hue, sat, val)
+			if CircleObject then
+				CircleObject.Color = Color3.fromHSV(hue, sat, val)
+			end
+		end,
+		Darker = true,
+		Visible = false
+	})
+	CircleTransparency = SilentAim:CreateSlider({
+		Name = 'Transparency',
+		Min = 0,
+		Max = 1,
+		Decimal = 10,
+		Default = 0.5,
+		Function = function(val)
+			if CircleObject then
+				CircleObject.Transparency = 1 - val
+			end
+		end,
+		Darker = true,
+		Visible = false
+	})
+	CircleFilled = SilentAim:CreateToggle({
+		Name = 'Circle Filled',
+		Function = function(callback)
+			if CircleObject then
+				CircleObject.Filled = callback
+			end
+		end,
+		Darker = true,
+		Visible = false
+	})
+	Projectile = SilentAim:CreateToggle({
+		Name = 'Projectile',
+		Function = function(callback)
+			ProjectileSpeed.Object.Visible = callback
+			ProjectileGravity.Object.Visible = callback
+		end
+	})
+	ProjectileSpeed = SilentAim:CreateSlider({
+		Name = 'Speed',
+		Min = 1,
+		Max = 1000,
+		Default = 1000,
+		Darker = true,
+		Visible = false,
+		Suffix = function(val)
+			return val == 1 and 'stud' or 'studs'
+		end
+	})
+	ProjectileGravity = SilentAim:CreateSlider({
+		Name = 'Gravity',
+		Min = 0,
+		Max = 192.6,
+		Default = 192.6,
+		Darker = true,
+		Visible = false
+	})
+end)
 			
 run(function()
     if isMobile then
@@ -6310,6 +6696,497 @@ run(function()
     end)
 end)
 
+-- granddad killaura
+local Attacking
+run(function()
+	local Killaura
+	local Targets
+	local Sort
+	local SwingRange
+	local AttackRange
+	local ChargeTime
+	local UpdateRate
+	local AngleSlider
+	local MaxTargets
+	local Mouse
+	local Swing
+	local GUI
+	local BoxSwingColor
+	local BoxAttackColor
+	local ParticleTexture
+	local ParticleColor1
+	local ParticleColor2
+	local ParticleSize
+	local Face
+	local Animation
+	local AnimationMode
+	local AnimationSpeed
+	local AnimationTween
+	local Limit
+	local LegitAura = {}
+	local AttackCheck
+	local kitChecks
+	local FROZEN_THRESHOLD = 10
+	local Particles, Boxes = {}, {}
+	local anims, AnimDelay, AnimTween, armC0 = vape.Libraries.auraanims, tick()
+	local AttackRemote = {FireServer = function() end}
+	task.spawn(function()
+		AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+	end)
+
+	local function flatAngle(selfpos, targetpos, facing)
+		local flat = (targetpos - selfpos) * Vector3.new(1, 0, 1)
+		if flat.Magnitude < 0.001 then return 0 end
+		return math.acos(math.clamp(facing:Dot(flat.Unit), -1, 1))
+	end
+
+	local function flatFacing(rootCFrame)
+		local lv = rootCFrame.LookVector * Vector3.new(1, 0, 1)
+		if lv.Magnitude < 0.001 then return rootCFrame.RightVector * Vector3.new(1, 0, 1) end
+		return lv.Unit
+	end
+
+	local lastFiredSwing = 0
+
+	kitChecks = {
+		['Sophia'] = function() return isFrozen(nil, FROZEN_THRESHOLD) end,
+		['Sigrid'] = function() return entitylib.isAlive and lplr.Character and lplr.Character:FindFirstChild('elk') ~= nil end,
+	}
+
+	local function getAttackData()
+		if AttackCheck and AttackCheck.Enabled then
+			local stunTime = lplr.Character and lplr.Character:GetAttribute('StunnedUntilTime')
+			if stunTime and stunTime > workspace:GetServerTimeNow() then return false end
+			if kitChecks then
+				for _, check in pairs(kitChecks) do
+					if check() then return false end
+				end
+			end
+		end
+		if Mouse and Mouse.Enabled then
+			local mousePressed = inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+			if not mousePressed then return false end
+		end
+		if GUI and GUI.Enabled then
+			if bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then return false end
+		end
+		local sword = (Limit and Limit.Enabled) and store.hand or store.tools.sword
+		if not sword or not sword.tool then return false end
+		local meta = bedwars.ItemMeta[sword.tool.Name]
+		if not meta or not meta.sword then return false end
+		if Limit and Limit.Enabled then
+			if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then return false end
+		end
+		if LegitAura and LegitAura.Enabled then
+			local lastSwing = bedwars.SwordController.lastSwing or 0
+			if (tick() - lastSwing) > 0.5 then return false end
+			if lastSwing == lastFiredSwing then return false end
+		end
+		return sword, meta
+	end
+
+	Killaura = vape.Categories.Blatant:CreateModule({
+		Name = 'GrandKillaura',
+		Function = function(callback)
+			if callback then
+				if inputService.TouchEnabled then
+					pcall(function()
+						lplr.PlayerGui.MobileUI['2'].Visible = Limit and Limit.Enabled
+					end)
+				end
+
+				if Animation and Animation.Enabled and not (identifyexecutor and table.find({'Argon', 'Delta'}, ({identifyexecutor()})[1])) then
+					local fake = {
+						Controllers = {
+							ViewmodelController = {
+								isVisible = function() return not Attacking end,
+								playAnimation = function(...)
+									if not Attacking then
+										bedwars.ViewmodelController:playAnimation(select(2, ...))
+									end
+								end
+							}
+						}
+					}
+
+					task.spawn(function()
+						local started = false
+						repeat
+							if AttackCheck and AttackCheck.Enabled then
+								local stunTime = lplr.Character and lplr.Character:GetAttribute('StunnedUntilTime')
+								if stunTime and stunTime > workspace:GetServerTimeNow() then
+									Attacking = false
+									store.KillauraTarget = nil
+									task.wait(0.3)
+									continue
+								end
+								if kitChecks then
+									local blocked = false
+									for _, check in pairs(kitChecks) do
+										if check() then blocked = true break end
+									end
+									if blocked then
+										Attacking = false
+										store.KillauraTarget = nil
+										task.wait(0.3)
+										continue
+									end
+								end
+							end
+							if Attacking then
+								if not armC0 then
+									armC0 = gameCamera.Viewmodel.RightHand.RightWrist.C0
+								end
+								local first = not started
+								started = true
+								if AnimationMode.Value == 'Random' then
+									anims.Random = {{CFrame = CFrame.Angles(math.rad(math.random(1, 360)), math.rad(math.random(1, 360)), math.rad(math.random(1, 360))), Time = 0.12}}
+								end
+								for _, v in anims[AnimationMode.Value] do
+									AnimTween = tweenService:Create(gameCamera.Viewmodel.RightHand.RightWrist, TweenInfo.new(first and (AnimationTween.Enabled and 0.001 or 0.1) or v.Time / AnimationSpeed.Value, Enum.EasingStyle.Linear), {
+										C0 = armC0 * v.CFrame
+									})
+									AnimTween:Play()
+									AnimTween.Completed:Wait()
+									first = false
+									if not Killaura.Enabled or not Attacking then break end
+								end
+							elseif started then
+								started = false
+								AnimTween = tweenService:Create(gameCamera.Viewmodel.RightHand.RightWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
+									C0 = armC0
+								})
+								AnimTween:Play()
+							end
+							if not started then task.wait(1 / UpdateRate.Value) end
+						until not Killaura.Enabled or not Animation.Enabled
+					end)
+				end
+
+				local swingCooldown = 0
+				repeat
+					if AttackCheck and AttackCheck.Enabled then
+						local stunTime = lplr.Character and lplr.Character:GetAttribute('StunnedUntilTime')
+						if stunTime and stunTime > workspace:GetServerTimeNow() then
+							Attacking = false
+							store.KillauraTarget = nil
+							task.wait(0.3)
+							continue
+						end
+						if kitChecks then
+							local blocked = false
+							for _, check in pairs(kitChecks) do
+								if check() then blocked = true break end
+							end
+							if blocked then
+								Attacking = false
+								store.KillauraTarget = nil
+								task.wait(0.3)
+								continue
+							end
+						end
+					end
+
+					local attacked, sword, meta = {}, getAttackData()
+					Attacking = false
+					store.KillauraTarget = nil
+
+					if sword then
+						local plrs = entitylib.AllPosition({
+							Range = SwingRange.Value,
+							Wallcheck = Targets.Walls.Enabled or nil,
+							Part = 'RootPart',
+							Players = Targets.Players.Enabled,
+							NPCs = Targets.NPCs.Enabled,
+							Limit = MaxTargets.Value,
+							Sort = sortmethods[Sort.Value]
+						})
+
+						if #plrs > 0 then
+							switchItem(sword.tool, 0)
+							local selfpos = entitylib.character.RootPart.Position
+							local facing = flatFacing(entitylib.character.RootPart.CFrame)
+							local maxAngle = math.rad(AngleSlider.Value) / 2
+
+							for _, v in plrs do
+								local delta = (v.RootPart.Position - selfpos)
+								if flatAngle(selfpos, v.RootPart.Position, facing) > maxAngle then continue end
+
+								table.insert(attacked, {
+									Entity = v,
+									Check = delta.Magnitude > AttackRange.Value and BoxSwingColor or BoxAttackColor
+								})
+								targetinfo.Targets[v] = tick() + 1
+
+								if not Attacking then
+									Attacking = true
+									store.KillauraTarget = v
+									local inLegitRange = delta.Magnitude < 14.4
+									local allowSwingAnim = not (Swing and Swing.Enabled) and AnimDelay < tick() and not (LegitAura and LegitAura.Enabled) and not (Animation and Animation.Enabled)
+									if allowSwingAnim then
+										AnimDelay = tick() + (meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or math.max(ChargeTime.Value, 0.11))
+										bedwars.SwordController:playSwordEffect(meta, false)
+										if meta.displayName:find(' Scythe') then
+											bedwars.ScytheController:playLocalAnimation()
+										end
+										if vape.ThreadFix then
+											setthreadidentity(8)
+										end
+									end
+								end
+
+								if delta.Magnitude > AttackRange.Value then continue end
+								if delta.Magnitude < 14.4 and (tick() - swingCooldown) < math.max(ChargeTime.Value, 0.02) then continue end
+
+								local actualRoot = v.Character.PrimaryPart
+								if not actualRoot then continue end
+
+								local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
+								local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
+								swingCooldown = tick()
+								if LegitAura and LegitAura.Enabled then
+									lastFiredSwing = bedwars.SwordController.lastSwing or 0
+								end
+								bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+								store.attackReach = (delta.Magnitude * 100) // 1 / 100
+								store.attackReachUpdate = tick() + 1
+
+								if delta.Magnitude < 14.4 and ChargeTime.Value > 0.11 then
+									AnimDelay = tick()
+								end
+
+								do
+									local suc, plr = pcall(function() return playersService:GetPlayerFromCharacter(v.Character) end)
+									if suc and plr then
+										local targetTier = getAccountTier(plr)
+										if targetTier >= 99 then continue end
+										if targetTier == 4 and getAccountTier(lplr) <= 2 then
+											local uid = plr.UserId
+											local now = tick()
+											if _t4LastHit[uid] and now - _t4LastHit[uid] < (10/32) then continue end
+											_t4LastHit[uid] = now
+										end
+									end
+								end
+								AttackRemote:FireServer({
+									weapon = sword.tool,
+									chargedAttack = {chargeRatio = 0},
+									lastSwingServerTimeDelta = math.clamp(lastSwingServerTimeDelta, 0.2, 0.8),
+									entityInstance = v.Character,
+									validate = {
+										raycast = {
+											cameraPosition = {value = pos},
+											cursorDirection = {value = dir}
+										},
+										targetPosition = {value = actualRoot.Position},
+										selfPosition = {value = pos}
+									}
+								})
+							end
+						end
+					end
+
+					pcall(function()
+						for i, v in Boxes do
+							v.Adornee = attacked[i] and attacked[i].Entity.RootPart or nil
+							if v.Adornee then
+								v.Color3 = Color3.fromHSV(attacked[i].Check.Hue, attacked[i].Check.Sat, attacked[i].Check.Value)
+								v.Transparency = 1 - attacked[i].Check.Opacity
+							end
+						end
+						for i, v in Particles do
+							v.Position = attacked[i] and attacked[i].Entity.RootPart.Position or Vector3.new(9e9, 9e9, 9e9)
+							v.Parent = attacked[i] and gameCamera or nil
+						end
+					end)
+
+					if Face and Face.Enabled and attacked[1] then
+						local vec = attacked[1].Entity.RootPart.Position * Vector3.new(1, 0, 1)
+						entitylib.character.RootPart.CFrame = CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(vec.X, entitylib.character.RootPart.Position.Y + 0.001, vec.Z))
+					end
+
+					task.wait(1 / UpdateRate.Value)
+				until not Killaura.Enabled
+			else
+				store.KillauraTarget = nil
+				for _, v in Boxes do v.Adornee = nil end
+				for _, v in Particles do v.Parent = nil end
+				if inputService.TouchEnabled then
+					pcall(function() lplr.PlayerGui.MobileUI['2'].Visible = true end)
+				end
+				Attacking = false
+				if armC0 then
+					AnimTween = tweenService:Create(gameCamera.Viewmodel.RightHand.RightWrist, TweenInfo.new(AnimationTween and AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
+						C0 = armC0
+					})
+					AnimTween:Play()
+				end
+			end
+		end,
+		Tooltip = 'Attack players around you\nwithout aiming at them.'
+	})
+
+	Targets = Killaura:CreateTargets({Players = true, NPCs = true})
+
+	local methods = {'Damage', 'Distance'}
+	for i in sortmethods do
+		if not table.find(methods, i) then table.insert(methods, i) end
+	end
+
+	SwingRange = Killaura:CreateSlider({
+		Name = 'Swing range', Min = 1, Max = 18, Default = 18,
+		Suffix = function(val) return val == 1 and 'stud' or 'studs' end
+	})
+	AttackRange = Killaura:CreateSlider({
+		Name = 'Attack range', Min = 1, Max = 18, Default = 18,
+		Suffix = function(val) return val == 1 and 'stud' or 'studs' end
+	})
+	ChargeTime = Killaura:CreateSlider({
+		Name = 'Swing time', Min = 0, Max = 0.5, Default = 0.42, Decimal = 100
+	})
+	AngleSlider = Killaura:CreateSlider({Name = 'Max angle', Min = 1, Max = 360, Default = 360})
+	UpdateRate = Killaura:CreateSlider({Name = 'Update rate', Min = 1, Max = 120, Default = 60, Suffix = 'hz'})
+	MaxTargets = Killaura:CreateSlider({Name = 'Max targets', Min = 1, Max = 5, Default = 5})
+	Sort = Killaura:CreateDropdown({Name = 'Target Mode', List = methods})
+	Mouse = Killaura:CreateToggle({Name = 'Require mouse down'})
+	Swing = Killaura:CreateToggle({Name = 'No Swing'})
+	GUI = Killaura:CreateToggle({Name = 'GUI check'})
+	Killaura:CreateToggle({
+		Name = 'Show target',
+		Function = function(callback)
+			BoxSwingColor.Object.Visible = callback
+			BoxAttackColor.Object.Visible = callback
+			if callback then
+				for i = 1, 10 do
+					local box = Instance.new('BoxHandleAdornment')
+					box.Adornee = nil
+					box.AlwaysOnTop = true
+					box.Size = Vector3.new(3, 5, 3)
+					box.CFrame = CFrame.new(0, -0.5, 0)
+					box.ZIndex = 0
+					box.Parent = vape.gui
+					Boxes[i] = box
+				end
+			else
+				for _, v in Boxes do v:Destroy() end
+				table.clear(Boxes)
+			end
+		end
+	})
+	BoxSwingColor = Killaura:CreateColorSlider({Name = 'Target Color', Darker = true, DefaultHue = 0.6, DefaultOpacity = 0.5, Visible = false})
+	BoxAttackColor = Killaura:CreateColorSlider({Name = 'Attack Color', Darker = true, DefaultOpacity = 0.5, Visible = false})
+	Killaura:CreateToggle({
+		Name = 'Target particles',
+		Function = function(callback)
+			ParticleTexture.Object.Visible = callback
+			ParticleColor1.Object.Visible = callback
+			ParticleColor2.Object.Visible = callback
+			ParticleSize.Object.Visible = callback
+			if callback then
+				for i = 1, 10 do
+					local part = Instance.new('Part')
+					part.Size = Vector3.new(2, 4, 2)
+					part.Anchored = true
+					part.CanCollide = false
+					part.Transparency = 1
+					part.CanQuery = false
+					part.Parent = Killaura.Enabled and gameCamera or nil
+					local particles = Instance.new('ParticleEmitter')
+					particles.Brightness = 1.5
+					particles.Size = NumberSequence.new(ParticleSize.Value)
+					particles.Shape = Enum.ParticleEmitterShape.Sphere
+					particles.Texture = ParticleTexture.Value
+					particles.Transparency = NumberSequence.new(0)
+					particles.Lifetime = NumberRange.new(0.4)
+					particles.Speed = NumberRange.new(16)
+					particles.Rate = 128
+					particles.Drag = 16
+					particles.ShapePartial = 1
+					particles.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Color3.fromHSV(ParticleColor1.Hue, ParticleColor1.Sat, ParticleColor1.Value)),
+						ColorSequenceKeypoint.new(1, Color3.fromHSV(ParticleColor2.Hue, ParticleColor2.Sat, ParticleColor2.Value))
+					})
+					particles.Parent = part
+					Particles[i] = part
+				end
+			else
+				for _, v in Particles do v:Destroy() end
+				table.clear(Particles)
+			end
+		end
+	})
+	ParticleTexture = Killaura:CreateTextBox({
+		Name = 'Texture', Default = 'rbxassetid://14736249347',
+		Function = function()
+			for _, v in Particles do v.ParticleEmitter.Texture = ParticleTexture.Value end
+		end,
+		Darker = true, Visible = false
+	})
+	ParticleColor1 = Killaura:CreateColorSlider({
+		Name = 'Color Begin',
+		Function = function(hue, sat, val)
+			for _, v in Particles do
+				v.ParticleEmitter.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromHSV(hue, sat, val)),
+					ColorSequenceKeypoint.new(1, Color3.fromHSV(ParticleColor2.Hue, ParticleColor2.Sat, ParticleColor2.Value))
+				})
+			end
+		end,
+		Darker = true, Visible = false
+	})
+	ParticleColor2 = Killaura:CreateColorSlider({
+		Name = 'Color End',
+		Function = function(hue, sat, val)
+			for _, v in Particles do
+				v.ParticleEmitter.Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromHSV(ParticleColor1.Hue, ParticleColor1.Sat, ParticleColor1.Value)),
+					ColorSequenceKeypoint.new(1, Color3.fromHSV(hue, sat, val))
+				})
+			end
+		end,
+		Darker = true, Visible = false
+	})
+	ParticleSize = Killaura:CreateSlider({
+		Name = 'Size', Min = 0, Max = 1, Default = 0.2, Decimal = 100,
+		Function = function(val)
+			for _, v in Particles do v.ParticleEmitter.Size = NumberSequence.new(val) end
+		end,
+		Darker = true, Visible = false
+	})
+	Face = Killaura:CreateToggle({Name = 'Face target'})
+	Animation = Killaura:CreateToggle({
+		Name = 'Custom Animation',
+		Function = function(callback)
+			AnimationMode.Object.Visible = callback
+			AnimationTween.Object.Visible = callback
+			AnimationSpeed.Object.Visible = callback
+			if Killaura.Enabled then Killaura:Toggle() Killaura:Toggle() end
+		end
+	})
+	local animnames = {}
+	for i in anims do table.insert(animnames, i) end
+	AnimationMode = Killaura:CreateDropdown({Name = 'Animation Mode', List = animnames, Darker = true, Visible = false})
+	AnimationSpeed = Killaura:CreateSlider({Name = 'Animation Speed', Min = 0, Max = 2, Default = 1, Decimal = 10, Darker = true, Visible = false})
+	AnimationTween = Killaura:CreateToggle({Name = 'No Tween', Darker = true, Visible = false})
+	Limit = Killaura:CreateToggle({
+		Name = 'Limit to items',
+		Function = function(callback)
+			if inputService.TouchEnabled and Killaura.Enabled then
+				pcall(function() lplr.PlayerGui.MobileUI['2'].Visible = callback end)
+			end
+		end,
+		Tooltip = 'Only attacks when the sword is held'
+	})
+	LegitAura = Killaura:CreateToggle({
+		Name = 'Swing only',
+		Tooltip = 'Only attacks while swinging manually'
+	})
+	AttackCheck = Killaura:CreateToggle({
+		Name = 'Attack Check',
+		Tooltip = 'Stops Killaura when stunned, frozen by Sophia, or riding Sigrid elk',
+		Default = false
+	})
+end)
 
 run(function()
     local moduleData = {
@@ -31397,353 +32274,5 @@ run(function()
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
         end
-    })
-end)
-
-run(function()
-    local AutoBedPatch
-    local Range
-    local connections = {}
-    
-    local function getMyBed()
-        local myTeam = lplr:GetAttribute('Team')
-        if not myTeam then return nil end
-        for _, bed in pairs(collectionService:GetTagged('bed')) do
-            if bed:GetAttribute('Team'..myTeam..'NoBreak') then
-                return bed
-            end
-        end
-        return nil
-    end
-    
-    local function getPlaceableBlock()
-        -- Finds the first placeable block in your inventory
-        for _, item in pairs(store.inventory.inventory.items) do
-            local meta = bedwars.ItemMeta[item.itemType]
-            if meta and meta.block and not meta.block.seeThrough then
-                return item.itemType
-            end
-        end
-        return 'wool_white' -- Fallback if nothing found
-    end
-    
-    AutoBedPatch = vape.Categories.Utility:CreateModule({
-        Name = 'AutoBedPatch',
-        Function = function(callback)
-            if callback then
-                local breakConn = vapeEvents.BreakBlockEvent.Event:Connect(function(data)
-                    if not entitylib.isAlive then return end
-                    -- Ignore if we broke the block ourselves
-                    if data.player == lplr then return end
-                    
-                    local bed = getMyBed()
-                    if not bed then return end
-                    
-                    local blockPos = data.blockRef.blockPosition * 3
-                    local dist = (blockPos - bed.Position).Magnitude
-                    
-                    -- If the broken block is near our bed, patch it instantly
-                    if dist <= Range.Value then
-                        local blockType = getPlaceableBlock()
-                        if blockType then
-                            task.spawn(function()
-                                -- Place it twice with a tiny delay to ensure it sticks through lag
-                                bedwars.placeBlock(blockPos, blockType, false)
-                                task.wait(0.05)
-                                bedwars.placeBlock(blockPos, blockType, false)
-                            end)
-                        end
-                    end
-                end)
-                table.insert(connections, breakConn)
-            else
-                for _, conn in pairs(connections) do
-                    if typeof(conn) == "RBXScriptConnection" then
-                        conn:Disconnect()
-                    end
-                end
-                table.clear(connections)
-            end
-        end,
-        Tooltip = 'Instantly places a block back when an enemy breaks a block near your bed to prevent bed breaks.'
-    })
-    
-    Range = AutoBedPatch:CreateSlider({
-        Name = 'Patch Range',
-        Min = 3,
-        Max = 30,
-        Default = 12,
-        Suffix = ' studs',
-        Tooltip = 'Distance from bed to auto-patch blocks'
-    })
-end)
-run(function()
-    local SilentAim
-    local FOV
-    local Range
-    local HitChance
-    local WallCheck
-    local TargetPlayers
-    local TargetNPCs
-    local ShowFOV
-    local FOVColor
-    local FOVThickness
-    local FOVTransparency
-
-    local oldNamecall
-    local oldRaycast
-    local FOVCircle
-
-    -- Get the closest valid target within FOV
-    local function getClosestTarget(origin)
-        local closest, closestDist = nil, math.huge
-        local fovRadius = math.tan(math.rad(FOV.Value / 2))
-
-        for _, ent in ipairs(entitylib.List) do
-            if (TargetPlayers.Enabled and ent.Player) or (TargetNPCs.Enabled and ent.NPC) then
-                if ent.Targetable and ent.RootPart and ent.Character and ent.Character.Parent then
-                    local hum = ent.Character:FindFirstChildOfClass("Humanoid")
-                    if hum and hum.Health > 0 then
-                        local dist = (ent.RootPart.Position - origin).Magnitude
-                        if dist <= Range.Value then
-                            -- FOV Check
-                            local screenPos, onScreen = gameCamera:WorldToViewportPoint(ent.RootPart.Position)
-                            if onScreen then
-                                local centerX = gameCamera.ViewportSize.X / 2
-                                local centerY = gameCamera.ViewportSize.Y / 2
-                                local dx = (screenPos.X - centerX) / gameCamera.ViewportSize.X
-                                local dy = (screenPos.Y - centerY) / gameCamera.ViewportSize.Y
-                                local screenDist = math.sqrt(dx * dx + dy * dy)
-
-                                if screenDist <= fovRadius then
-                                    if dist < closestDist then
-                                        closestDist = dist
-                                        closest = ent
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        return closest
-    end
-
-    -- Check if there is a wall between you and the target
-    local function wallCheck(origin, targetPos)
-        if not WallCheck.Enabled then return true end
-        local direction = targetPos - origin
-        local rayParams = RaycastParams.new()
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-        rayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
-
-        local result = workspace:Raycast(origin, direction, rayParams)
-        return not result
-    end
-
-    SilentAim = vape.Categories.Combat:CreateModule({
-        Name = 'SilentAim',
-        Function = function(callback)
-            if callback then
-                -- Create FOV Circle
-                FOVCircle = Drawing.new('Circle')
-                FOVCircle.Visible = ShowFOV.Enabled
-                FOVCircle.Thickness = FOVThickness.Value
-                FOVCircle.NumSides = 100
-                FOVCircle.Radius = FOV.Value
-                FOVCircle.Filled = false
-                FOVCircle.Color = Color3.fromHSV(FOVColor.Hue, FOVColor.Sat, FOVColor.Value)
-                FOVCircle.Transparency = 1 - FOVTransparency.Value
-
-                -- Hook Workspace:Raycast (Modern Bedwars attacks)
-                oldRaycast = hookfunction(workspace.Raycast, newcclosure(function(self, origin, direction, params)
-                    if checkcaller() then return oldRaycast(self, origin, direction, params) end
-
-                    local target = getClosestTarget(origin)
-                    if target then
-                        if wallCheck(origin, target.RootPart.Position) then
-                            if math.random(1, 100) <= HitChance.Value then
-                                local newDirection = CFrame.lookAt(origin, target.RootPart.Position).LookVector * direction.Magnitude
-                                return oldRaycast(self, origin, newDirection, params)
-                            end
-                        end
-                    end
-                    return oldRaycast(self, origin, direction, params)
-                end))
-
-                -- Hook __namecall (Legacy/FindPartOnRay attacks)
-                oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-                    local method = getnamecallmethod()
-                    if checkcaller() then return oldNamecall(self, ...) end
-
-                    if method == "Raycast" or method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" then
-                        local args = {...}
-                        local origin = args[1]
-                        local target = getClosestTarget(origin)
-
-                        if target then
-                            if wallCheck(origin, target.RootPart.Position) then
-                                if math.random(1, 100) <= HitChance.Value then
-                                    if method == "Raycast" then
-                                        args[2] = CFrame.lookAt(origin, target.RootPart.Position).LookVector * args[2].Magnitude
-                                        return oldNamecall(self, unpack(args))
-                                    elseif method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList" then
-                                        local ray = args[1]
-                                        local newRay = Ray.new(origin, CFrame.lookAt(origin, target.RootPart.Position).LookVector * ray.Direction.Magnitude)
-                                        args[1] = newRay
-                                        return oldNamecall(self, unpack(args))
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    return oldNamecall(self, ...)
-                end))
-
-                -- Render FOV Circle
-                SilentAim:Clean(runService.RenderStepped:Connect(function()
-                    if FOVCircle and ShowFOV.Enabled then
-                        FOVCircle.Position = Vector2.new(gameCamera.ViewportSize.X / 2, gameCamera.ViewportSize.Y / 2)
-                    end
-                end))
-            else
-                -- Cleanup hooks and drawings
-                if oldRaycast then hookfunction(workspace.Raycast, oldRaycast) end
-                if oldNamecall then hookmetamethod(game, "__namecall", oldNamecall) end
-                if FOVCircle then FOVCircle:Remove() end
-                oldRaycast, oldNamecall, FOVCircle = nil, nil, nil
-            end
-        end,
-        Tooltip = 'Silently aims at enemies without moving your camera'
-    })
-
-    -- UI Elements
-    FOV = SilentAim:CreateSlider({Name = 'FOV', Min = 1, Max = 360, Default = 90})
-    Range = SilentAim:CreateSlider({Name = 'Range', Min = 1, Max = 200, Default = 50, Suffix = ' studs'})
-    HitChance = SilentAim:CreateSlider({Name = 'Hit Chance', Min = 0, Max = 100, Default = 100, Suffix = '%'})
-
-    WallCheck = SilentAim:CreateToggle({Name = 'Wall Check', Default = true})
-    TargetPlayers = SilentAim:CreateToggle({Name = 'Target Players', Default = true})
-    TargetNPCs = SilentAim:CreateToggle({Name = 'Target NPCs', Default = false})
-
-    ShowFOV = SilentAim:CreateToggle({
-        Name = 'Show FOV',
-        Default = true,
-        Function = function(callback)
-            if FOVCircle then FOVCircle.Visible = callback end
-        end
-    })
-
-    FOVColor = SilentAim:CreateColorSlider({Name = 'FOV Color', DefaultHue = 0.6, DefaultSat = 1, DefaultValue = 1})
-    FOVThickness = SilentAim:CreateSlider({Name = 'FOV Thickness', Min = 1, Max = 5, Default = 1})
-    FOVTransparency = SilentAim:CreateSlider({Name = 'FOV Transparency', Min = 0, Max = 1, Default = 0.5, Decimal = 10})
-end)
-run(function()
-    local AutoTerra
-    local Aimbot
-    local AutoStomp
-    local AutoKick
-    local Range
-    local FOV
-    
-    local function getClosestEnemy()
-        if not entitylib.isAlive then return nil end
-        local myPos = entitylib.character.RootPart.Position
-        local closest, closestDist = nil, Range.Value
-        local fovRadius = math.tan(math.rad(FOV.Value / 2))
-
-        for _, ent in ipairs(entitylib.List) do
-            if ent.Targetable and ent.RootPart and ent.Character and ent.Character.Parent then
-                local dist = (ent.RootPart.Position - myPos).Magnitude
-                if dist <= closestDist then
-                    -- FOV Check
-                    local screenPos, onScreen = gameCamera:WorldToViewportPoint(ent.RootPart.Position)
-                    if onScreen then
-                        local centerX = gameCamera.ViewportSize.X / 2
-                        local centerY = gameCamera.ViewportSize.Y / 2
-                        local dx = (screenPos.X - centerX) / gameCamera.ViewportSize.X
-                        local dy = (screenPos.Y - centerY) / gameCamera.ViewportSize.Y
-                        local screenDist = math.sqrt(dx * dx + dy * dy)
-
-                        if screenDist <= fovRadius then
-                            closestDist = dist
-                            closest = ent
-                        end
-                    end
-                end
-            end
-        end
-        return closest
-    end
-
-    AutoTerra = vape.Categories.Kits:CreateModule({
-        Name = 'AutoTerra',
-        Function = function(callback)
-            if callback then
-                AutoTerra:Clean(runService.Heartbeat:Connect(function()
-                    if not entitylib.isAlive then return end
-                    
-                    -- Optional: Only run if Terra kit is equipped
-                    if store.equippedKit and store.equippedKit ~= 'terra' then return end
-
-                    local target = getClosestEnemy()
-                    if not target then return end
-
-                    -- Aimbot logic: Snaps camera to target
-                    if Aimbot.Enabled then
-                        local targetPos = target.RootPart.Position
-                        local currentCFrame = gameCamera.CFrame
-                        local targetCFrame = CFrame.lookAt(currentCFrame.Position, targetPos)
-                        gameCamera.CFrame = targetCFrame
-                    end
-
-                    -- Auto Stomp (AoE slam, facing target ensures optimal knockback direction)
-                    if AutoStomp.Enabled and bedwars.AbilityController:canUseAbility('TERRA_STOMP') then
-                        bedwars.AbilityController:useAbility('TERRA_STOMP')
-                    end
-
-                    -- Auto Kick (Requires looking at the enemy to connect)
-                    if AutoKick.Enabled and bedwars.AbilityController:canUseAbility('TERRA_KICK') then
-                        bedwars.AbilityController:useAbility('TERRA_KICK', nil, {target = target.Character})
-                    end
-                end))
-            end
-        end,
-        Tooltip = 'Aimbot and auto-abilities for Terra kit'
-    })
-
-    Aimbot = AutoTerra:CreateToggle({
-        Name = 'Aimbot', 
-        Default = true, 
-        Tooltip = 'Snaps camera to nearest enemy for perfect kicks'
-    })
-    
-    AutoStomp = AutoTerra:CreateToggle({
-        Name = 'Auto Stomp', 
-        Default = true, 
-        Tooltip = 'Auto uses Terra Stomp when ready'
-    })
-    
-    AutoKick = AutoTerra:CreateToggle({
-        Name = 'Auto Kick', 
-        Default = true, 
-        Tooltip = 'Auto uses Terra Kick on the targeted enemy'
-    })
-    
-    Range = AutoTerra:CreateSlider({
-        Name = 'Range', 
-        Min = 1, 
-        Max = 50, 
-        Default = 20, 
-        Suffix = ' studs'
-    })
-    
-    FOV = AutoTerra:CreateSlider({
-        Name = 'FOV', 
-        Min = 1, 
-        Max = 360, 
-        Default = 180,
-        Tooltip = 'Field of view for the aimbot'
     })
 end)
