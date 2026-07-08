@@ -32623,3 +32623,121 @@ run(function()
         Tooltip = 'Distance from bed to auto-patch blocks'
     })
 end)
+run(function()
+    local AutoZola
+    local AllyDropdown
+    local EnemyRange
+    local WallCheck
+    local linkedAlly = nil
+    local linkedEnemy = nil
+    local lastLinkTime = 0
+
+    local function getTeammates()
+        local list = {}
+        local myTeam = lplr:GetAttribute('Team')
+        for _, plr in ipairs(playersService:GetPlayers()) do
+            if plr ~= lplr and plr:GetAttribute('Team') == myTeam and plr.Character and plr.Character.Parent then
+                table.insert(list, plr.Name)
+            end
+        end
+        return list
+    end
+
+    local function getClosestEnemy(origin, range)
+        local closest, closestDist = nil, range
+        for _, ent in ipairs(entitylib.List) do
+            if ent.Player and ent.RootPart and ent.Character and ent.Character.Parent then
+                local hum = ent.Character:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    local dist = (ent.RootPart.Position - origin).Magnitude
+                    if dist < closestDist then
+                        -- Wallcheck logic
+                        if WallCheck.Enabled then
+                            local rayParams = RaycastParams.new()
+                            rayParams.FilterType = Enum.RaycastFilterType.Exclude
+                            rayParams.FilterDescendantsInstances = {lplr.Character, ent.Character}
+                            local result = workspace:Raycast(origin, ent.RootPart.Position - origin, rayParams)
+                            if result then continue end
+                        end
+                        closestDist = dist
+                        closest = ent
+                    end
+                end
+            end
+        end
+        return closest
+    end
+
+    AutoZola = vape.Categories.Kits:CreateModule({
+        Name = 'AutoZola',
+        Function = function(callback)
+            if callback then
+                AutoZola:Clean(runService.Heartbeat:Connect(function()
+                    if not entitylib.isAlive then return end
+                    if store.equippedKit and store.equippedKit ~= 'zola' then return end
+
+                    local now = tick()
+                    if now - lastLinkTime < 0.5 then return end -- Cooldown to prevent spam
+
+                    local myPos = entitylib.character.RootPart.Position
+
+                    -- 1. Link Ally
+                    if AllyDropdown.Value and AllyDropdown.Value ~= "None" then
+                        local ally = playersService:FindFirstChild(AllyDropdown.Value)
+                        if ally and ally.Character and ally.Character.Parent then
+                            if linkedAlly ~= ally then
+                                pcall(function()
+                                    bedwars.Client:Get(remotes.UseKitAbility):FireServer('ZOLA_ABILITY', ally.Character)
+                                end)
+                                linkedAlly = ally
+                                lastLinkTime = now
+                            end
+                        else
+                            linkedAlly = nil
+                        end
+                    end
+
+                    -- 2. Link Enemy
+                    local enemy = getClosestEnemy(myPos, EnemyRange.Value)
+                    if enemy then
+                        if linkedEnemy ~= enemy then
+                            pcall(function()
+                                bedwars.Client:Get(remotes.UseKitAbility):FireServer('ZOLA_ABILITY', enemy.Character)
+                            end)
+                            linkedEnemy = enemy
+                            lastLinkTime = now
+                        end
+                    else
+                        linkedEnemy = nil
+                    end
+                end))
+            else
+                linkedAlly = nil
+                linkedEnemy = nil
+            end
+        end,
+        Tooltip = 'Auto links to selected ally or enemies in range with wallcheck.'
+    })
+
+    -- UI Elements
+    local teammates = getTeammates()
+    table.insert(teammates, 1, "None")
+
+    AllyDropdown = AutoZola:CreateDropdown({
+        Name = 'Link Ally',
+        List = teammates,
+        Default = 'None',
+        Tooltip = 'Select a teammate to link to'
+    })
+
+    EnemyRange = AutoZola:CreateSlider({
+        Name = 'Enemy Link Range',
+        Min = 5, Max = 50, Default = 20, Suffix = ' studs'
+    })
+
+    WallCheck = AutoZola:CreateToggle({
+        Name = 'Wall Check (Enemies)',
+        Default = true,
+        Tooltip = 'Only link enemies if there are no walls between you'
+    })
+end)
