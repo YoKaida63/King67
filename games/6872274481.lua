@@ -32898,11 +32898,11 @@ run(function()
     local FireRate
     local Range
     local Prediction
-    local AutoPlace
+    local TargetPlayers
+    local TargetNPCs
     local connections = {}
     local turretFireTimes = {}
     
-    local httpService = game:GetService("HttpService")
     local NetManaged = game:GetService("ReplicatedStorage").rbxts_include.node_modules["@rbxts"].net.out._NetManaged
     local AimTurretRemote = NetManaged:FindFirstChild("AimTurret")
     local ProjectileFireRemote = NetManaged:FindFirstChild("ProjectileFire")
@@ -32911,9 +32911,11 @@ run(function()
 
     local function getOwnedTurrets()
         local turrets = {}
-        for _, v in ipairs(store.blocks or {}) do
-            if v.Name == "camera_turret" and v:GetAttribute("PlacedByUserId") == lplr.UserId and v.Parent then
-                table.insert(turrets, v)
+        for _, block in ipairs(store.blocks or {}) do
+            if block.Name == "camera_turret" 
+            and block:GetAttribute("PlacedByUserId") == lplr.UserId 
+            and block.Parent then
+                table.insert(turrets, block)
             end
         end
         return turrets
@@ -32922,13 +32924,19 @@ run(function()
     local function getTarget(turretPos)
         local best, bestDist = nil, Range.Value
         for _, ent in ipairs(entitylib.List) do
-            if ent.Player and ent.RootPart and ent.Character and ent.Character.Parent then
-                local hum = ent.Character:FindFirstChildOfClass("Humanoid")
-                if hum and hum.Health > 0 then
-                    local dist = (ent.RootPart.Position - turretPos).Magnitude
-                    if dist < bestDist then
-                        bestDist = dist
-                        best = ent
+            local isPlayer = ent.Player ~= nil
+            local isNPC = ent.NPC == true
+            
+            -- Check if we should target this entity based on the toggles
+            if (TargetPlayers.Enabled and isPlayer) or (TargetNPCs.Enabled and isNPC) then
+                if ent.RootPart and ent.Character and ent.Character.Parent then
+                    local hum = ent.Character:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then
+                        local dist = (turretPos - ent.RootPart.Position).Magnitude
+                        if dist < bestDist then
+                            bestDist = dist
+                            best = ent
+                        end
                     end
                 end
             end
@@ -32937,33 +32945,29 @@ run(function()
     end
 
     local function fireTurret(turret)
-        local now = tick()
-        local delay = FireRate.Value / 1000 -- Convert slider to seconds
-        if (now - (turretFireTimes[turret] or 0)) < delay then return end
-        turretFireTimes[turret] = now
-
+        if not turret or not turret.Parent then return end
         local turretPos = turret.Position
         local blockPos = bedwars.BlockController:getBlockPosition(turretPos)
         local ent = getTarget(turretPos)
         if not ent or not ent.RootPart then return end
 
-        local targetPos = ent.RootPart.Position
+        local targetPart = ent.RootPart
+        local targetPos = targetPart.Position
         
-        -- GOD TIER PREDICTION
         if Prediction.Enabled then
             local vel = ent.RootPart.Velocity or Vector3.zero
             local travelTime = math.max((turretPos - targetPos).Magnitude / 300, 0.01)
             targetPos = targetPos + Vector3.new(vel.X, vel.Y * 0.3, vel.Z) * travelTime
         end
 
-        local lookDir = (targetPos - turretPos).Unit
+        local lookDir = targetPos - turretPos
         if lookDir.Magnitude < 0.1 then return end
+        lookDir = lookDir.Unit
         
         local flatMag = Vector3.new(lookDir.X, 0, lookDir.Z).Magnitude
         local yaw = math.atan2(-lookDir.X, -lookDir.Z)
         local pitch = math.atan2(lookDir.Y, flatMag > 0 and flatMag or 0.001)
 
-        -- 1. INSTANT AIM
         if AimTurretRemote then
             pcall(function()
                 AimTurretRemote:FireServer({
@@ -32974,42 +32978,46 @@ run(function()
             end)
         end
 
-        -- 2. INSTANT FIRE
+        local now = tick()
+        if (now - (turretFireTimes[turret] or 0)) < (FireRate.Value / 1000) then return end
+        turretFireTimes[turret] = now
+
         local fireId = httpService:GenerateGUID(false):sub(1, 8)
         local shotId = httpService:GenerateGUID(false):sub(1, 8)
         local shootOrigin = turretPos + lookDir * 2 + Vector3.new(0, 1, 0)
         local velocity = lookDir * 300
 
-        local firedId
-        if ProjectileFireRemote then
-            pcall(function()
-                firedId = ProjectileFireRemote:InvokeServer(
-                    turret, nil, "turretBullet",
-                    shootOrigin, turretPos, velocity,
-                    fireId, { shotId = shotId, drawDurationSec = 0 }, 
-                    workspace:GetServerTimeNow() - 0.02
-                )
-            end)
-        elseif RaycastTurretRemote then
-            pcall(function()
-                RaycastTurretRemote:FireServer(turret, turretPos + Vector3.new(0, 1, 0), lookDir * 500, blockPos)
-            end)
-        end
-
-        -- 3. INSTANT HIT REGISTER
-        if firedId and ent.Character and ent.Character.Parent then
-            task.wait(0.01) -- Minimal wait for server to register projectile
-            if ProjectileHitRemote then
-                pcall(function() ProjectileHitRemote:FireServer(firedId, ent.Character) end)
-                task.wait(0.005)
-                pcall(function() ProjectileHitRemote:FireServer(firedId, ent.Character) end) -- Double tap to ensure hit
+        task.spawn(function()
+            local firedId
+            if ProjectileFireRemote then
+                pcall(function()
+                    firedId = ProjectileFireRemote:InvokeServer(
+                        turret, nil, "turretBullet",
+                        shootOrigin, turretPos, velocity,
+                        fireId, { shotId = shotId, drawDurationSec = 0 }, 
+                        workspace:GetServerTimeNow() - 0.02
+                    )
+                end)
+            elseif RaycastTurretRemote then
+                pcall(function()
+                    RaycastTurretRemote:FireServer(turret, turretPos + Vector3.new(0, 1, 0), lookDir * 500, blockPos)
+                end)
             end
-        end
+
+            if firedId and ent.Character and ent.Character.Parent then
+                task.wait(0.01)
+                if ProjectileHitRemote then
+                    pcall(function() ProjectileHitRemote:FireServer(firedId, ent.Character) end)
+                    task.wait(0.005)
+                    pcall(function() ProjectileHitRemote:FireServer(firedId, ent.Character) end)
+                end
+            end
+        end)
     end
 
     GodVulcan = vape.Categories.Kits:CreateModule({
         Name = 'GodVulcan',
-        Tooltip = 'Ultra-fast turret auto-aim with prediction. Melts players instantly.',
+        Tooltip = 'Ultra-fast turret auto-aim. Hits players AND NPCs instantly.',
         Function = function(callback)
             if callback then
                 local loop = task.spawn(function()
@@ -33021,7 +33029,7 @@ run(function()
                                 turretFireTimes[turret] = nil
                             end
                         end
-                        task.wait(0.01) -- Ultra fast loop (100hz)
+                        task.wait(0.01)
                     end
                 end)
                 table.insert(connections, loop)
@@ -33035,13 +33043,26 @@ run(function()
         end
     })
 
+    -- UI Elements
+    TargetPlayers = GodVulcan:CreateToggle({
+        Name = 'Target Players',
+        Default = true,
+        Tooltip = 'Aim at enemy players'
+    })
+
+    TargetNPCs = GodVulcan:CreateToggle({
+        Name = 'Target NPCs',
+        Default = true,
+        Tooltip = 'Hits training dummies, Dim Guards, and other NPCs'
+    })
+
     FireRate = GodVulcan:CreateSlider({
         Name = 'Fire Rate',
         Min = 10,
         Max = 100,
         Default = 15,
         Suffix = 'ms',
-        Tooltip = 'Lower = Faster. 15ms is god tier. 10ms might drop packets.'
+        Tooltip = 'Lower = Faster. 15ms is god tier.'
     })
 
     Range = GodVulcan:CreateSlider({
@@ -33055,7 +33076,7 @@ run(function()
     Prediction = GodVulcan:CreateToggle({
         Name = 'Bullet Prediction',
         Default = true,
-        Tooltip = 'Aims ahead of moving targets so bullets don\'t miss'
+        Tooltip = 'Aims ahead of moving targets'
     })
 end)
 run(function()
