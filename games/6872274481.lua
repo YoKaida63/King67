@@ -32741,3 +32741,142 @@ run(function()
         Tooltip = 'Only link enemies if there are no walls between you'
     })
 end)
+run(function()
+    local AutoGrimReaper
+    local AutoConsumeSouls
+    local AutoScythe
+    local Range
+    local FOV
+    local HealthThreshold
+
+    AutoGrimReaper = vape.Categories.Kits:CreateModule({
+        Name = 'AutoGrimReaper',
+        Function = function(callback)
+            if callback then
+                AutoGrimReaper:Clean(runService.Heartbeat:Connect(function()
+                    if not entitylib.isAlive then return end
+                    if store.equippedKit and store.equippedKit ~= 'grim_reaper' then return end
+
+                    local myPos = entitylib.character.RootPart.Position
+                    local currentHealth = lplr.Character:GetAttribute('Health') or 100
+                    local maxHealth = lplr.Character:GetAttribute('MaxHealth') or 100
+                    local healthPct = (currentHealth / maxHealth) * 100
+
+                    -- Auto Consume Souls
+                    if AutoConsumeSouls.Enabled and healthPct <= HealthThreshold.Value then
+                        local souls = bedwars.GrimReaperController.soulsByPosition or {}
+                        for _, soul in pairs(souls) do
+                            if soul and soul:GetAttribute('GrimReaperSoulSecret') then
+                                local dist = (soul.Position - myPos).Magnitude
+                                if dist <= Range.Value then
+                                    pcall(function()
+                                        bedwars.Client:Get(remotes.ConsumeSoul):CallServer({secret = soul:GetAttribute('GrimReaperSoulSecret')})
+                                    end)
+                                    task.wait(0.08) -- prevents remote spam
+                                end
+                            end
+                        end
+                    end
+
+                    -- Auto Scythe Attack
+                    if AutoScythe.Enabled then
+                        for _, ent in ipairs(entitylib.List) do
+                            if ent.Player and ent.RootPart and ent.Character and ent.Character.Parent then
+                                local dist = (ent.RootPart.Position - myPos).Magnitude
+                                if dist <= Range.Value then
+                                    local screenPos, onScreen = gameCamera:WorldToViewportPoint(ent.RootPart.Position)
+                                    if onScreen then
+                                        local fovRadius = math.tan(math.rad(FOV.Value / 2))
+                                        local dx = (screenPos.X - gameCamera.ViewportSize.X / 2) / gameCamera.ViewportSize.X
+                                        local dy = (screenPos.Y - gameCamera.ViewportSize.Y / 2) / gameCamera.ViewportSize.Y
+                                        if math.sqrt(dx*dx + dy*dy) <= fovRadius then
+                                            if bedwars.AbilityController:canUseAbility('GRIM_SCYTHE') then
+                                                bedwars.AbilityController:useAbility('GRIM_SCYTHE', nil, {target = ent.Character})
+                                            end
+                                            break
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end))
+            end
+        end,
+        Tooltip = 'Auto consumes souls when low HP & auto-attacks with scythe in FOV'
+    })
+
+    AutoConsumeSouls = AutoGrimReaper:CreateToggle({Name = 'Auto Consume Souls', Default = true})
+    AutoScythe = AutoGrimReaper:CreateToggle({Name = 'Auto Scythe Attack', Default = true})
+    Range = AutoGrimReaper:CreateSlider({Name = 'Range', Min = 5, Max = 50, Default = 20, Suffix = ' studs'})
+    FOV = AutoGrimReaper:CreateSlider({Name = 'FOV', Min = 1, Max = 360, Default = 180})
+    HealthThreshold = AutoGrimReaper:CreateSlider({Name = 'Health % Threshold', Min = 1, Max = 100, Default = 50, Suffix = '%'})
+end)
+
+run(function()
+    local AutoSilas
+    local AutoShield
+    local AutoAuraSwap
+    local Range
+    local FOV
+    local ShieldHealthThreshold
+
+    AutoSilas = vape.Categories.Kits:CreateModule({
+        Name = 'AutoSilas',
+        Function = function(callback)
+            if callback then
+                AutoSilas:Clean(runService.Heartbeat:Connect(function()
+                    if not entitylib.isAlive then return end
+                    if store.equippedKit and store.equippedKit ~= 'silas' then return end
+
+                    local myPos = entitylib.character.RootPart.Position
+                    local currentHealth = lplr.Character:GetAttribute('Health') or 100
+                    local maxHealth = lplr.Character:GetAttribute('MaxHealth') or 100
+                    local healthPct = (currentHealth / maxHealth) * 100
+
+                    -- Auto Shield Activation
+                    if AutoShield.Enabled then
+                        local enemyNear = false
+                        for _, ent in ipairs(entitylib.List) do
+                            if ent.Player and ent.RootPart and ent.Character and ent.Character.Parent then
+                                local dist = (ent.RootPart.Position - myPos).Magnitude
+                                if dist <= Range.Value then
+                                    local screenPos, onScreen = gameCamera:WorldToViewportPoint(ent.RootPart.Position)
+                                    if onScreen then
+                                        local fovRadius = math.tan(math.rad(FOV.Value / 2))
+                                        local dx = (screenPos.X - gameCamera.ViewportSize.X / 2) / gameCamera.ViewportSize.X
+                                        local dy = (screenPos.Y - gameCamera.ViewportSize.Y / 2) / gameCamera.ViewportSize.Y
+                                        if math.sqrt(dx*dx + dy*dy) <= fovRadius then
+                                            enemyNear = true
+                                            break
+                                        end
+                                    end
+                                end
+                            end
+                        end
+
+                        if (enemyNear or healthPct <= ShieldHealthThreshold.Value) and bedwars.AbilityController:canUseAbility('SILAS_SHIELD') then
+                            bedwars.AbilityController:useAbility('SILAS_SHIELD')
+                        end
+                    end
+
+                    -- Auto Aura Swap
+                    if AutoAuraSwap.Enabled then
+                        if healthPct <= 40 and bedwars.AbilityController:canUseAbility('SILAS_AURA_HEALING') then
+                            bedwars.AbilityController:useAbility('SILAS_AURA_HEALING')
+                        elseif healthPct > 60 and bedwars.AbilityController:canUseAbility('SILAS_AURA_DAMAGE') then
+                            bedwars.AbilityController:useAbility('SILAS_AURA_DAMAGE')
+                        end
+                    end
+                end))
+            end
+        end,
+        Tooltip = 'Auto shield when enemies are near/low HP, auto swaps auras based on health'
+    })
+
+    AutoShield = AutoSilas:CreateToggle({Name = 'Auto Shield', Default = true})
+    AutoAuraSwap = AutoSilas:CreateToggle({Name = 'Auto Aura Swap', Default = true})
+    Range = AutoSilas:CreateSlider({Name = 'Shield Range', Min = 5, Max = 50, Default = 20, Suffix = ' studs'})
+    FOV = AutoSilas:CreateSlider({Name = 'Shield FOV', Min = 1, Max = 360, Default = 180})
+    ShieldHealthThreshold = AutoSilas:CreateSlider({Name = 'Shield HP %', Min = 1, Max = 100, Default = 50, Suffix = '%'})
+end)
