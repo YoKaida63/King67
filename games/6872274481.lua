@@ -33161,3 +33161,96 @@ run(function()
     IgnoreTeammates = ScriptDetector:CreateToggle({Name = 'Ignore Teammates', Default = true})
     AlertSound = ScriptDetector:CreateToggle({Name = 'Play Alert Sound', Default = true})
 end)
+run(function()
+    local AnimationChanger
+    local AnimID
+    local TargetAnim
+    local ApplyToAll
+
+    local oldLoadAnimation
+    local AnimatorClass
+
+    -- Safely find the Animator class to hook its LoadAnimation method
+    local function findAnimatorClass()
+        if AnimatorClass then return AnimatorClass end
+        
+        -- Try getrenv first (common in most executors)
+        local success, renv = pcall(getrenv)
+        if success and renv and renv.Animator then
+            AnimatorClass = renv.Animator
+            return AnimatorClass
+        end
+        
+        -- Fallback: search garbage collector for the Animator class table
+        for _, v in ipairs(getgc(true)) do
+            if type(v) == "table" and rawget(v, "LoadAnimation") and rawget(v, "CreateAnimation") then
+                AnimatorClass = v
+                return AnimatorClass
+            end
+        end
+        return nil
+    end
+
+    AnimationChanger = vape.Categories.World:CreateModule({
+        Name = 'AnimationChanger',
+        Function = function(callback)
+            if callback then
+                local cls = findAnimatorClass()
+                if cls and cls.LoadAnimation then
+                    oldLoadAnimation = hookfunction(cls.LoadAnimation, newcclosure(function(self, anim)
+                        if AnimationChanger.Enabled and AnimID.Value ~= "" then
+                            local animName = (anim.Name or ""):lower()
+                            local target = (TargetAnim.Value or "Walk"):lower()
+
+                            local shouldReplace = false
+                            -- Check if we should replace this specific animation
+                            if ApplyToAll.Enabled then
+                                shouldReplace = true
+                            elseif animName == target then
+                                shouldReplace = true
+                            elseif target == "walk" and (animName == "walk" or animName == "run") then
+                                shouldReplace = true
+                            end
+
+                            -- Replace the AnimationId with the custom one
+                            if shouldReplace then
+                                pcall(function()
+                                    anim.AnimationId = AnimID.Value
+                                end)
+                            end
+                        end
+                        return oldLoadAnimation(self, anim)
+                    end))
+                end
+            else
+                -- Restore original function when disabled
+                if oldLoadAnimation and AnimatorClass then
+                    pcall(function()
+                        hookfunction(AnimatorClass.LoadAnimation, oldLoadAnimation)
+                    end)
+                    oldLoadAnimation = nil
+                end
+            end
+        end,
+        Tooltip = 'Change your animations to any custom Roblox animation ID'
+    })
+
+    AnimID = AnimationChanger:CreateTextBox({
+        Name = 'Animation ID',
+        Default = 'rbxassetid://6160081852', -- Example: Cool walk animation
+        Tooltip = 'Enter the full rbxassetid://... (Must match R6 or R15)'
+    })
+
+    TargetAnim = AnimationChanger:CreateDropdown({
+        Name = 'Target Animation',
+        List = {'Walk', 'Run', 'Jump', 'Idle', 'Fall', 'Climb', 'Swim'},
+        Default = 'Walk',
+        Tooltip = 'Which animation to replace'
+    })
+
+    ApplyToAll = AnimationChanger:CreateToggle({
+        Name = 'Apply to All',
+        Default = false,
+        Tooltip = 'Replace ALL animations with the custom ID'
+    })
+end)
