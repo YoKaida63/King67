@@ -5372,60 +5372,95 @@ run(function()
         return false
     end
 
-    local function canHitWithCustomReg()
-        if not CustomHitReg or not CustomHitReg.Enabled then return true end
-        if not CustomHitRegSlider then return true end
-        if CustomHitRegSlider.Value >= 36 then return true end
-        local currentTime = tick()
-        local delayBetweenHits = 10 / CustomHitRegSlider.Value
-        if currentTime - lastCustomHitTime >= delayBetweenHits then
-            lastCustomHitTime = lastCustomHitTime + delayBetweenHits
-            if currentTime - lastCustomHitTime > delayBetweenHits then
-                lastCustomHitTime = currentTime
-            end
-            return true
-        end
-        return false
+   local function canHitWithCustomReg()
+    if not CustomHitReg or not CustomHitReg.Enabled then return true end
+    if not CustomHitRegSlider then return true end
+    
+    -- If 36 or higher, remove limiter completely
+    if CustomHitRegSlider.Value >= 36 then return true end
+    
+    local currentTime = tick()
+    -- FIXED MATH: 1 divided by HPS gives the exact delay needed per hit
+    local delayBetweenHits = 1 / CustomHitRegSlider.Value 
+    
+    -- Add a 2ms buffer to prevent Server Tick Overlap (The #1 cause of dropped hits)
+    local buffer = 0.002 
+    
+    if currentTime - lastCustomHitTime >= (delayBetweenHits - buffer) then
+        lastCustomHitTime = currentTime
+        return true
     end
-
+    return false
+end
     local _t4LastHit = {}
 
-    local function FireAttackRemote(attackTable)
-        if not AttackRemote then return end
-        if not canHitWithCustomReg() then return end
-        local _atkPlr = playersService:GetPlayerFromCharacter(attackTable.entityInstance)
-        if _atkPlr then
-            local targetTier = getAccountTier(_atkPlr)
-            if targetTier >= 99 then return end
-            if targetTier == 4 and getAccountTier(lplr) <= 2 then
-                local uid = _atkPlr.UserId
-                local now = tick()
-                if _t4LastHit[uid] and now - _t4LastHit[uid] < (10/32) then return end
-                _t4LastHit[uid] = now
-            end
-            -- whitelist removed
-        end
-        if DynamicReach and DynamicReach.Enabled then
-            if not getOptimizedAttackTiming((attackTable.validate.selfPosition.value - attackTable.validate.targetPosition.value).Magnitude) then
-                return
-            end
-            local ns, nt, nc, ncu = optimizeHitData(
-                attackTable.validate.selfPosition.value,
-                attackTable.validate.targetPosition.value,
-                (attackTable.validate.selfPosition.value - attackTable.validate.targetPosition.value).Magnitude,
-                attackTable.validate.raycast.cameraPosition.value,
-                attackTable.validate.raycast.cursorDirection.value
-            )
-            if ns then
-                attackTable.validate.selfPosition.value = ns
-                attackTable.validate.targetPosition.value = nt
-                attackTable.validate.raycast.cameraPosition.value = nc
-                attackTable.validate.raycast.cursorDirection.value = ncu
-            end
-        end
-        return AttackRemote:FireServer(attackTable)
-    end
+    local hitQueue = {}
+local isProcessingQueue = false
 
+local function processHitQueue()
+    if isProcessingQueue or #hitQueue == 0 then return end
+    isProcessingQueue = true
+    
+    task.spawn(function()
+        while #hitQueue > 0 do
+            local attackTable = table.remove(hitQueue, 1)
+            
+            -- Forces every queued remote to fire on its own distinct server tick
+            task.wait(0.016) 
+            pcall(function()
+                AttackRemote:FireServer(attackTable)
+            end)
+        end
+        isProcessingQueue = false
+    end)
+end
+
+local function FireAttackRemote(attackTable)
+    if not AttackRemote then return end
+    
+    -- Check HitReg limit
+    if not canHitWithCustomReg() then 
+        -- If we are slightly too early, queue it for the next frame instead of dropping it
+        if #hitQueue < 5 then 
+            table.insert(hitQueue, attackTable)
+            processHitQueue()
+        end
+        return 
+    end
+    
+    local _atkPlr = playersService:GetPlayerFromCharacter(attackTable.entityInstance)
+    if _atkPlr then
+        local targetTier = getAccountTier(_atkPlr)
+        if targetTier >= 99 then return end
+        if targetTier == 4 and getAccountTier(lplr) <= 2 then
+            local uid = _atkPlr.UserId
+            local now = tick()
+            if _t4LastHit[uid] and now - _t4LastHit[uid] < (10/32) then return end
+            _t4LastHit[uid] = now
+        end
+    end
+    
+    if DynamicReach and DynamicReach.Enabled then
+        if not getOptimizedAttackTiming((attackTable.validate.selfPosition.value - attackTable.validate.targetPosition.value).Magnitude) then
+            return
+        end
+        local ns, nt, nc, ncu = optimizeHitData(
+            attackTable.validate.selfPosition.value,
+            attackTable.validate.targetPosition.value,
+            (attackTable.validate.selfPosition.value - attackTable.validate.targetPosition.value).Magnitude,
+            attackTable.validate.raycast.cameraPosition.value,
+            attackTable.validate.raycast.cursorDirection.value
+        )
+        if ns then
+            attackTable.validate.selfPosition.value = ns
+            attackTable.validate.targetPosition.value = nt
+            attackTable.validate.raycast.cameraPosition.value = nc
+            attackTable.validate.raycast.cursorDirection.value = ncu
+        end
+    end
+    
+    return AttackRemote:FireServer(attackTable)
+end
     local function createRangeCircle()
         local suc, err = pcall(function()
             if (not shared.CheatEngineMode) then
