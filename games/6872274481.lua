@@ -33202,3 +33202,39 @@ run(function()
         Tooltip = 'Only rapid buys when you hold down click for 0.3+ seconds. Single clicks buy normally.'
     })
 end)
+local Terra
+
+Terra = vape.Categories.Exploits:CreateModule({
+    Name = 'TerraAura',
+    Tooltip = 'TP terra blocks to enemies',
+    Function = function(c)
+        if c then
+            repeat
+                task.wait(.5)
+                if not usingKit'block_kicker' then return end
+
+                local plrs = entitylib.AllPosition({
+                    Range = 1e5,
+                    Wallcheck = false,
+                    Part = 'RootPart',
+                    Players = true,
+                    NPCs = false,
+                    Limit = 1,
+                    Sort = sortmethods.Distance
+                })
+
+                for _, p in plrs do
+                    local root = p.RootPart
+                    useAbility:FireServer'BLOCK_STOMP'
+                    Remotes.TryBlockKick:FireServer({
+                        projectileRefId = 'fat fuck',
+                        direction = Vector3.new(0,-1,0),
+                        blockType = 'siege_tnt',
+                        originPosition = root.Position
+                    })
+                    break
+                end
+            until not Terra.Enabled
+        end
+    end
+})
