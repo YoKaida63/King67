@@ -32546,3 +32546,80 @@ run(function()
         Tooltip = 'Field of view for the aimbot'
     })
 end)
+run(function()
+    local AutoBedPatch
+    local Range
+    local connections = {}
+    
+    local function getMyBed()
+        local myTeam = lplr:GetAttribute('Team')
+        if not myTeam then return nil end
+        for _, bed in pairs(collectionService:GetTagged('bed')) do
+            if bed:GetAttribute('Team'..myTeam..'NoBreak') then
+                return bed
+            end
+        end
+        return nil
+    end
+    
+    local function getPlaceableBlock()
+        -- Finds the first placeable block in your inventory
+        for _, item in pairs(store.inventory.inventory.items) do
+            local meta = bedwars.ItemMeta[item.itemType]
+            if meta and meta.block and not meta.block.seeThrough then
+                return item.itemType
+            end
+        end
+        return 'wool_white' -- Fallback if nothing found
+    end
+    
+    AutoBedPatch = vape.Categories.Utility:CreateModule({
+        Name = 'AutoBedPatch',
+        Function = function(callback)
+            if callback then
+                local breakConn = vapeEvents.BreakBlockEvent.Event:Connect(function(data)
+                    if not entitylib.isAlive then return end
+                    -- Ignore if we broke the block ourselves
+                    if data.player == lplr then return end
+                    
+                    local bed = getMyBed()
+                    if not bed then return end
+                    
+                    local blockPos = data.blockRef.blockPosition * 3
+                    local dist = (blockPos - bed.Position).Magnitude
+                    
+                    -- If the broken block is near our bed, patch it instantly
+                    if dist <= Range.Value then
+                        local blockType = getPlaceableBlock()
+                        if blockType then
+                            task.spawn(function()
+                                -- Place it twice with a tiny delay to ensure it sticks through lag
+                                bedwars.placeBlock(blockPos, blockType, false)
+                                task.wait(0.05)
+                                bedwars.placeBlock(blockPos, blockType, false)
+                            end)
+                        end
+                    end
+                end)
+                table.insert(connections, breakConn)
+            else
+                for _, conn in pairs(connections) do
+                    if typeof(conn) == "RBXScriptConnection" then
+                        conn:Disconnect()
+                    end
+                end
+                table.clear(connections)
+            end
+        end,
+        Tooltip = 'Instantly places a block back when an enemy breaks a block near your bed to prevent bed breaks.'
+    })
+    
+    Range = AutoBedPatch:CreateSlider({
+        Name = 'Patch Range',
+        Min = 3,
+        Max = 30,
+        Default = 12,
+        Suffix = ' studs',
+        Tooltip = 'Distance from bed to auto-patch blocks'
+    })
+end)
