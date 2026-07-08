@@ -30036,7 +30036,8 @@ run(function()
     local Mode
     local Range
     local Place
-    
+    local Targets
+
     local function getTurret(localPosition)
         for _, v in store.blocks do
             if v.Name == 'camera_turret' and v:GetAttribute('PlacedByUserId') == lplr.UserId and (localPosition - v.Position).Magnitude <= 30 then
@@ -30045,7 +30046,7 @@ run(function()
         end
         return nil
     end
-    
+
     local function getPlacedPosition(pos)
         for _, v in {Vector3.new(3, 0, 0), Vector3.new(0, 0, 3)} do
             for i = 1, 10 do
@@ -30057,7 +30058,7 @@ run(function()
         end
         return
     end
-    
+
     InstantKill = vape.Categories.Blatant:CreateModule({
         Name = 'Instant Kill',
         Function = function(callback)
@@ -30068,7 +30069,7 @@ run(function()
                     notif('InstantKill', 'You need vulcan equipped for this!', 8, 'warning')
                     return
                 end
-    
+
                 local delay, pickups = 0, {}
                 repeat
                     if entitylib.isAlive and tick() > delay then
@@ -30077,7 +30078,8 @@ run(function()
                             Origin = localPosition,
                             Range = Range.Value,
                             Part = 'RootPart',
-                            Players = true,
+                            Players = Targets and Targets.Players.Enabled or true,
+                            NPCs = Targets and Targets.NPCs.Enabled or false,
                             Wallcheck = true,
                             Sort = sortmethods.Health,
                         })
@@ -30122,7 +30124,13 @@ run(function()
         end,
         Tooltip = 'Automatically uses turret to instant kill targets.'
     })
-    
+
+    Targets = InstantKill:CreateTargets({
+        Players = true,
+        NPCs = true,
+        Walls = false,
+    })
+
     Mode = InstantKill:CreateDropdown({
         Name = 'Mode',
         List = {'Toggle', 'On bind'},
@@ -30147,7 +30155,8 @@ end)
 
 run(function()
     local SigridExploit
-    local Kit, Mount = 'elk_master', bedwars.Client:Get('ElkKitMounted')
+    local Kit = 'elk_master'
+    local Mount = bedwars.Client:Get('ElkKitMounted')
 
     SigridExploit = vape.Categories.Kits:CreateModule({
         Name = 'Infinite Sigrid',
@@ -30155,12 +30164,13 @@ run(function()
         Function = function(call)
             if call then
                 repeat
-                    if entitylib.isAlive then
-                        if store.equippedKit == Kit then
+                    if entitylib.isAlive and store.equippedKit == Kit then
+                        pcall(function()
                             Mount:SendToServer()
-                        end
+                        end)
                     end
-                    task.wait()
+                    -- Wait 0.1 seconds instead of 1 frame to prevent UI glitching
+                    task.wait(0.1)
                 until not SigridExploit.Enabled
             end
         end
@@ -32786,7 +32796,7 @@ run(function()
             if ProjectileHitRemote then
                 pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
                 -- FIX 3: Reduced delay from 0.02 to 0.005
-                task.wait(0.005)
+               
                 if targetChar and targetChar.Parent and (targetChar:GetAttribute("Health") or 0) > 0 then
                     pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
                 end
