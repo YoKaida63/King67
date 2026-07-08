@@ -32668,217 +32668,214 @@ run(function()
     ShieldHealthThreshold = AutoSilas:CreateSlider({Name = 'Shield HP %', Min = 1, Max = 100, Default = 50, Suffix = '%'})
 end)
 run(function()
-    local GodVulcan
-    local FireRate
-    local Range
-    local Prediction
-    local connections = {}
-    local turretFireTimes = {}
-    local turretTargets = {}
-    local turretThreads = {}
+	local GodVulcan
+	local FireRate
+	local Range
+	local Prediction
+	local Targets
+	local connections = {}
+	local turretFireTimes = {}
+	local turretTargets = {}
+	local turretThreads = {}
+	
+	local function getOwnedTurrets()
+		local turrets = {}
+		for _, block in ipairs(store.blocks or {}) do
+			if block.Name == "camera_turret"
+			and block:GetAttribute("PlacedByUserId") == lplr.UserId
+			and block.Parent
+			then
+				table.insert(turrets, block)
+			end
+		end
+		return turrets
+	end
+	
+	local function isTargetValid(ent, turretPos)
+		if not ent or not ent.Character then return false end
+		if not ent.RootPart or not ent.RootPart.Parent then return false end
+		if (ent.Character:GetAttribute("Health") or 0) <= 0 then return false end
+		if (turretPos - ent.RootPart.Position).Magnitude > (Range and Range.Value or 1000) then return false end
+		return true
+	end
+	
+	local function getTarget(turret)
+		local turretPos = turret.Position
+		local locked = turretTargets[turret]
+		if isTargetValid(locked, turretPos) then
+			return locked
+		end
+		local ent = entitylib.EntityPosition({
+			Origin = turretPos,
+			Range = Range and Range.Value or 1000,
+			Part = "RootPart",
+			Players = Targets.Players.Enabled,
+			NPCs = Targets.NPCs.Enabled,
+			Sort = sortmethods.Distance,
+		})
+		turretTargets[turret] = ent
+		return ent
+	end
+	
+	local function fireTurret(turret)
+		if not turret or not turret.Parent then return end
+		local turretPos = turret.Position
+		local blockPos = bedwars.BlockController:getBlockPosition(turretPos)
+		local ent = getTarget(turret)
+		if not ent or not ent.RootPart then return end
+		
+		local torso = ent.Character:FindFirstChild("UpperTorso")
+			or ent.Character:FindFirstChild("Torso")
+			or ent.RootPart
+		local targetPos = torso.Position
+		
+		if Prediction and Prediction.Enabled then
+			local vel = ent.RootPart.Velocity or Vector3.zero
+			local travelTime = math.max((turretPos - targetPos).Magnitude / 300, 0.01)
+			targetPos = targetPos + Vector3.new(vel.X, vel.Y * 0.3, vel.Z) * travelTime
+		end
+		
+		local lookDir = targetPos - turretPos
+		if lookDir.Magnitude < 0.1 then return end
+		lookDir = lookDir.Unit
+		
+		local flatMag = Vector3.new(lookDir.X, 0, lookDir.Z).Magnitude
+		local yaw = math.atan2(-lookDir.X, -lookDir.Z)
+		local pitch = math.atan2(lookDir.Y, flatMag > 0 and flatMag or 0.001)
+		
+		if AimTurretRemote then
+			pcall(function()
+				AimTurretRemote:FireServer({
+					angleX = math.deg(pitch),
+					angleY = math.deg(yaw),
+					turretBlockPos = blockPos,
+				})
+			end)
+		end
 
-    local function getOwnedTurrets()
-        local turrets = {}
-        for _, block in ipairs(store.blocks or {}) do
-            if block.Name == "camera_turret"
-            and block:GetAttribute("PlacedByUserId") == lplr.UserId
-            and block.Parent
-            then
-                table.insert(turrets, block)
-            end
-        end
-        return turrets
-    end
+		-- MAX SPEED / NO COOLDOWN LOGIC
+		local fireId = httpService:GenerateGUID(false):sub(1, 8)
+		local shotId = httpService:GenerateGUID(false):sub(1, 8)
+		local targetChar = ent.Character
+		local shootOrigin = turretPos + lookDir * 2 + Vector3.new(0, 1, 0)
+		local velocity = lookDir * 300
+		
+		task.spawn(function()
+			local firedId
+			if ProjectileFireRemote then
+				pcall(function()
+					firedId = ProjectileFireRemote:InvokeServer(
+						turret, nil, "turretBullet",
+						shootOrigin, turretPos, velocity,
+						fireId,
+						{ shotId = shotId, drawDurationSec = 0 },
+						workspace:GetServerTimeNow() - 0.045
+					)
+				end)
+			elseif RaycastTurretRemote then
+				pcall(function()
+					local targetDir = (targetPos - turretPos).Unit * 500
+					RaycastTurretRemote:FireServer(turret, turretPos + Vector3.new(0, 1, 0), targetDir, blockPos)
+				end)
+			end
+			
+			if not firedId then
+				turretTargets[turret] = nil
+				return
+			end
 
-    local function isTargetValid(ent, turretPos)
-        if not ent or not ent.Character then return false end
-        if not ent.RootPart or not ent.RootPart.Parent then return false end
-        if (ent.Character:GetAttribute("Health") or 0) <= 0 then return false end
-        if (turretPos - ent.RootPart.Position).Magnitude > (Range and Range.Value or 1000) then return false end
-        return true
-    end
-
-    local function getTarget(turret)
-        local turretPos = turret.Position
-        local locked = turretTargets[turret]
-        if isTargetValid(locked, turretPos) then
-            return locked
-        end
-        local ent = entitylib.EntityPosition({
-            Origin = turretPos,
-            Range = Range and Range.Value or 1000,
-            Part = "RootPart",
-            Players = true,
-            NPCs = true,
-            Sort = sortmethods.Distance,
-        })
-        turretTargets[turret] = ent
-        return ent
-    end
-
-    local function fireTurret(turret)
-        if not turret or not turret.Parent then return end
-        local turretPos = turret.Position
-        local blockPos = bedwars.BlockController:getBlockPosition(turretPos)
-        local ent = getTarget(turret)
-        if not ent or not ent.RootPart then return end
-
-        local torso = ent.Character:FindFirstChild("UpperTorso")
-            or ent.Character:FindFirstChild("Torso")
-            or ent.RootPart
-        local targetPos = torso.Position
-
-        if Prediction and Prediction.Enabled then
-            local vel = ent.RootPart.Velocity or Vector3.zero
-            local travelTime = math.max((turretPos - targetPos).Magnitude / 300, 0.01)
-            targetPos = targetPos + Vector3.new(vel.X, vel.Y * 0.3, vel.Z) * travelTime
-        end
-
-        local lookDir = targetPos - turretPos
-        if lookDir.Magnitude < 0.1 then return end
-        lookDir = lookDir.Unit
-
-        local flatMag = Vector3.new(lookDir.X, 0, lookDir.Z).Magnitude
-        local yaw = math.atan2(-lookDir.X, -lookDir.Z)
-        local pitch = math.atan2(lookDir.Y, flatMag > 0 and flatMag or 0.001)
-
-        if AimTurretRemote then
-            pcall(function()
-                AimTurretRemote:FireServer({
-                    angleX = math.deg(pitch),
-                    angleY = math.deg(yaw),
-                    turretBlockPos = blockPos,
-                })
-            end)
-        end
-
-        -- FIX 1: Actually use the FireRate slider instead of hardcoded 0.08
-        local fireDelay = (FireRate.Value / 1000)
-        local now = tick()
-        if (now - (turretFireTimes[turret] or 0)) < fireDelay then return end
-        turretFireTimes[turret] = now
-
-        local fireId = httpService:GenerateGUID(false):sub(1, 8)
-        local shotId = httpService:GenerateGUID(false):sub(1, 8)
-        local targetChar = ent.Character
-        local shootOrigin = turretPos + lookDir * 2 + Vector3.new(0, 1, 0)
-        local velocity = lookDir * 300
-
-        task.spawn(function()
-            local firedId
-            if ProjectileFireRemote then
-                pcall(function()
-                    firedId = ProjectileFireRemote:InvokeServer(
-                        turret, nil, "turretBullet",
-                        shootOrigin, turretPos, velocity,
-                        fireId,
-                        { shotId = shotId, drawDurationSec = 0 },
-                        workspace:GetServerTimeNow() - 0.045
-                    )
-                end)
-            elseif RaycastTurretRemote then
-                pcall(function()
-                    local targetDir = (targetPos - turretPos).Unit * 500
-                    RaycastTurretRemote:FireServer(turret, turretPos + Vector3.new(0, 1, 0), targetDir, blockPos)
-                end)
-            end
-
-            if not firedId then
-                turretTargets[turret] = nil
-                return
-            end
-
-            -- FIX 2: Reduced delay from 0.05 to 0.01 for instant hit registration
-            task.wait(0.01)
-            if not targetChar or not targetChar.Parent then return end
-            if (targetChar:GetAttribute("Health") or 0) <= 0 then return end
-
-            if ProjectileHitRemote then
-                pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
-                -- FIX 3: Reduced delay from 0.02 to 0.005
-               
-                if targetChar and targetChar.Parent and (targetChar:GetAttribute("Health") or 0) > 0 then
-                    pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
-                end
-            end
-        end)
-    end
-
-    local function startTurretLoop(turret)
-        if turretThreads[turret] then return end
-        turretThreads[turret] = task.spawn(function()
-            while GodVulcan.Enabled and turret and turret.Parent do
-                if entitylib.isAlive then
-                    pcall(fireTurret, turret)
-                end
-                -- FIX 4: Use the FireRate slider for the loop wait
-                task.wait((FireRate.Value / 1000))
-            end
-            turretThreads[turret] = nil
-            turretTargets[turret] = nil
-            turretFireTimes[turret] = nil
-        end)
-    end
-
-    local function stopAllLoops()
-        for _, thread in pairs(turretThreads) do
-            pcall(task.cancel, thread)
-        end
-        table.clear(turretThreads)
-        table.clear(turretTargets)
-        table.clear(turretFireTimes)
-    end
-
-    GodVulcan = vape.Categories.Kits:CreateModule({
-        Name = 'God Vulcan',
-        Tooltip = 'All turrets auto aim with max fire rate',
-        Function = function(callback)
-            if callback then
-                GodVulcan:Clean(task.spawn(function()
-                    while GodVulcan.Enabled do
-                        for _, turret in ipairs(getOwnedTurrets()) do
-                            startTurretLoop(turret)
-                        end
-                        for turret, thread in pairs(turretThreads) do
-                            if not turret.Parent then
-                                pcall(task.cancel, thread)
-                                turretThreads[turret] = nil
-                                turretTargets[turret] = nil
-                                turretFireTimes[turret] = nil
-                            end
-                        end
-                        task.wait(0.5)
-                    end
-                end))
-                GodVulcan:Clean(stopAllLoops)
-            else
-                stopAllLoops()
-            end
-        end,
-    })
-
-    FireRate = GodVulcan:CreateSlider({
-        Name = 'Fire Rate',
-        Min = 5,
-        Max = 100,
-        Default = 10,
-        Suffix = 'ms',
-        Tooltip = 'Lower = Faster. 10ms is max speed. 5ms might drop packets.'
-    })
-
-    Range = GodVulcan:CreateSlider({
-        Name = 'Distance',
-        Min = 1,
-        Max = 1000,
-        Default = 1000,
-        Suffix = function(val) return val == 1 and 'stud' or 'studs' end,
-    })
-
-    Prediction = GodVulcan:CreateToggle({
-        Name = 'Prediction',
-        Default = true,
-        Tooltip = 'Predicts target movement.',
-    })
+			task.wait(0.001) -- Instant hit registration
+			if not targetChar or not targetChar.Parent then return end
+			if (targetChar:GetAttribute("Health") or 0) <= 0 then return end
+			
+			if ProjectileHitRemote then
+				pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
+				if targetChar and targetChar.Parent and (targetChar:GetAttribute("Health") or 0) > 0 then
+					pcall(function() ProjectileHitRemote:FireServer(firedId, targetChar) end)
+				end
+			end
+		end)
+	end
+	
+	local function startTurretLoop(turret)
+		if turretThreads[turret] then return end
+		turretThreads[turret] = task.spawn(function()
+			while GodVulcan.Enabled and turret and turret.Parent do
+				if entitylib.isAlive then
+					pcall(fireTurret, turret)
+				end
+				-- MAX SPEED LOOP (No cooldown)
+				task.wait(0.001) 
+			end
+			turretThreads[turret] = nil
+			turretTargets[turret] = nil
+			turretFireTimes[turret] = nil
+		end)
+	end
+	
+	local function stopAllLoops()
+		for _, thread in pairs(turretThreads) do
+			pcall(task.cancel, thread)
+		end
+		table.clear(turretThreads)
+		table.clear(turretTargets)
+		table.clear(turretFireTimes)
+	end
+	
+	GodVulcan = vape.Categories.Kits:CreateModule({
+		Name = 'God Vulcan',
+		Tooltip = 'All turrets auto aim with max fire rate (Targets: Players, NPCs, Diamond Guards)',
+		Function = function(callback)
+			if callback then
+				GodVulcan:Clean(task.spawn(function()
+					while GodVulcan.Enabled do
+						for _, turret in ipairs(getOwnedTurrets()) do
+							startTurretLoop(turret)
+						end
+						for turret, thread in pairs(turretThreads) do
+							if not turret.Parent then
+								pcall(task.cancel, thread)
+								turretThreads[turret] = nil
+								turretTargets[turret] = nil
+								turretFireTimes[turret] = nil
+							end
+						end
+						task.wait(0.5)
+					end
+				end))
+				GodVulcan:Clean(stopAllLoops)
+			else
+				stopAllLoops()
+			end
+		end,
+	})
+	
+	-- TARGETS SELECTOR (Players & NPCs/Diamond Guards)
+	Targets = GodVulcan:CreateTargets({
+		Players = true,
+		NPCs = true
+	})
+	
+	FireRate = GodVulcan:CreateSlider({
+		Name = 'Fire Rate',
+		Min = 1,
+		Max = 100,
+		Default = 1,
+		Suffix = 'ms',
+		Tooltip = 'Loop runs at max speed (0.001s) for instant hits.'
+	})
+	Range = GodVulcan:CreateSlider({
+		Name = 'Distance',
+		Min = 1,
+		Max = 1000,
+		Default = 1000,
+		Suffix = function(val) return val == 1 and 'stud' or 'studs' end,
+	})
+	Prediction = GodVulcan:CreateToggle({
+		Name = 'Prediction',
+		Default = true,
+		Tooltip = 'Predicts target movement.',
+	})
 end)
 run(function()
     local ScriptDetector
