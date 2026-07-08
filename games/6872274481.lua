@@ -33045,3 +33045,106 @@ run(function()
         Tooltip = 'Aims ahead of moving targets so bullets don\'t miss'
     })
 end)
+run(function()
+    local ScriptDetector
+    local DetectArtifacts
+    local IgnoreTeammates
+    local AlertSound
+    local connections = {}
+    local flaggedPlayers = {}
+
+    -- List of common script/executor names to scan for in replicated objects
+    local knownScriptNames = {
+        'dex', 'explorer', 'darkdex', 'synapse', 'fluxus', 'delta', 
+        'arceus', 'krnl', 'vape', 'vapev4', 'kingv4', 'remotespy', 
+        'remotelogger', 'script', 'executor', 'loadstring', 'remote_spy',
+        'console', 'debug', 'inspect'
+    }
+
+    local function isTeammate(plr)
+        if not IgnoreTeammates.Enabled then return false end
+        local myTeam = lplr:GetAttribute('Team') or lplr:GetAttribute('TeamId')
+        local theirTeam = plr:GetAttribute('Team') or plr:GetAttribute('TeamId')
+        return myTeam == theirTeam
+    end
+
+    local function alertScripter(plr, evidence)
+        local userId = plr.UserId
+        -- Prevent spamming the same alert
+        if flaggedPlayers[userId] and (tick() - flaggedPlayers[userId]) < 15 then
+            return
+        end
+        flaggedPlayers[userId] = tick()
+
+        local message = string.format("️ %s is likely using a script/executor! (%s)", plr.Name, evidence)
+        vape:CreateNotification("ScriptDetector", message, 5, "alert")
+        
+        if AlertSound.Enabled then
+            pcall(function()
+                local sound = Instance.new("Sound")
+                sound.SoundId = "rbxassetid://9125325894" -- Alert sound
+                sound.Volume = 0.5
+                sound.Parent = lplr.Character or workspace
+                sound:Play()
+                task.wait(1)
+                sound:Destroy()
+            end)
+        end
+    end
+
+    ScriptDetector = vape.Categories.Utility:CreateModule({
+        Name = 'ScriptDetector',
+        Function = function(callback)
+            if callback then
+                -- 1. Detect Replicated Artifacts (Workspace & ReplicatedStorage)
+                if DetectArtifacts.Enabled then
+                    local function checkDescendant(obj)
+                        if not obj or not obj.Name then return end
+                        local lowerName = string.lower(obj.Name)
+                        
+                        for _, scriptName in ipairs(knownScriptNames) do
+                            if string.find(lowerName, scriptName, 1, true) then
+                                -- Try to find which player it belongs to
+                                local parent = obj.Parent
+                                while parent do
+                                    if parent:IsA("Player") then
+                                        if not isTeammate(parent) then
+                                            alertScripter(parent, "Replicated script artifact: " .. obj.Name)
+                                        end
+                                        return
+                                    elseif parent:IsA("Model") and parent:FindFirstChild("Humanoid") then
+                                        local plr = playersService:GetPlayerFromCharacter(parent)
+                                        if plr and not isTeammate(plr) then
+                                            alertScripter(plr, "Script artifact in character: " .. obj.Name)
+                                        end
+                                        return
+                                    end
+                                    parent = parent.Parent
+                                end
+                                break
+                            end
+                        end
+                    end
+
+                    local wsConn = workspace.DescendantAdded:Connect(checkDescendant)
+                    local rs = game:GetService("ReplicatedStorage")
+                    local rsConn = rs.DescendantAdded:Connect(checkDescendant)
+                    
+                    table.insert(connections, wsConn)
+                    table.insert(connections, rsConn)
+                end
+            else
+                for _, conn in ipairs(connections) do
+                    if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+                end
+                table.clear(connections)
+                table.clear(flaggedPlayers)
+            end
+        end,
+        Tooltip = 'Detects players who have injected scripts by looking for replicated executor artifacts.'
+    })
+
+    DetectArtifacts = ScriptDetector:CreateToggle({Name = 'Detect Replicated Artifacts', Default = true, Tooltip = 'Scans Workspace and ReplicatedStorage for known script/executor names'})
+    IgnoreTeammates = ScriptDetector:CreateToggle({Name = 'Ignore Teammates', Default = true})
+    AlertSound = ScriptDetector:CreateToggle({Name = 'Play Alert Sound', Default = true})
+end)
