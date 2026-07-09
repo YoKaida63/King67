@@ -33203,6 +33203,253 @@ run(function()
     })
 end)
 run(function()
+    local SilentAura
+    local Targets
+    local Speed
+    local Range
+    local Angle
+    local Mode
+    local Area
+    local LegitAura
+    local Mouse
+    local Dynamic
+    local Limit
+    local SilentAim
+    local SwingTime
+    local Perfect
+    
+    local Show
+    local Targetcolor
+    local Attackcolor
+    
+    local function getAttackData()
+        if not entitylib.isAlive then return false end
+        if Mouse.Enabled then
+            if not inputService:IsMouseButtonPressed(0) and (tick() - bedwars.SwordController.lastSwing) > 0.3 then
+                return false
+            end
+        end
+        if LegitAura.Enabled and (tick() - bedwars.SwordController.lastSwing) > 0.3 then
+            return false
+        end
+        if (lplr.Character:GetAttribute('StunnedUntilTime') or 0) - workspace:GetServerTimeNow() > 0 then
+            return false
+        end
+        if bedwars.AppController:isLayerOpen(bedwars.UILayers.MAIN) then
+            return false
+        end
+        local sword = Limit.Enabled and store.hand or store.tools.sword
+        if not sword or not sword.tool then return false end
+        local meta = bedwars.ItemMeta[sword.tool.Name]
+        if Limit.Enabled then
+            if store.hand.toolType ~= 'sword' or bedwars.DaoController.chargingMaid then
+                return false
+            end
+        end
+        return sword, meta
+    end
+    
+    local function calculateHitreg(ent)
+        return 0.15 * (math.min(14.4, (entitylib.character.RootPart.Position - ent.RootPart.Position).Magnitude)) / 14.4
+    end
+    
+    local cache = {}
+    local function getAim(ent)
+        if Area.Value == 'Closest' then
+            if not cache[ent.Character] then
+                cache[ent.Character] = ent.Character:GetChildren()
+            end
+            local localPosition, magnitude, part = inputService.GetMouseLocation(inputService), 9e9, nil
+            for _, v in cache[ent.Character] do
+                if v and v.Parent and v:IsA('BasePart') then
+                    local position, vis = gameCamera.WorldToViewportPoint(gameCamera, v.Position)
+                    if vis then
+                        local mag = (localPosition - Vector2.new(position.x, position.y)).Magnitude
+                        if mag < magnitude then
+                            magnitude = mag
+                            part = v
+                        end
+                    end
+                end
+            end
+            if part then return part.Position end
+        end
+        return ent.RootPart.Position
+    end
+    
+    local box = Instance.new('BoxHandleAdornment')
+    box.Adornee = nil
+    box.AlwaysOnTop = true
+    box.Size = Vector3.new(3, 5, 3)
+    box.CFrame = CFrame.new(0, -0.5, 0)
+    box.ZIndex = 0
+    box.Parent = vape.gui
+    
+    SilentAura = vape.Categories.Combat:CreateModule({
+        Name = 'Silent Aura',
+        Function = function(callback)
+            if callback then
+                local lastent = nil
+                local lastattacked = 0
+                local lastHit = 0
+                local currentCameraCFrame = gameCamera.CFrame
+                
+                -- BUTTER SMOOTH: Use Heartbeat instead of a task.wait() loop
+                SilentAura:Clean(runService.Heartbeat:Connect(function(dt)
+                    local sword, meta = getAttackData()
+                    if not sword then
+                        box.Adornee = nil
+                        if entitylib.isAlive then entitylib.character.Humanoid.AutoRotate = true end
+                        return
+                    end
+                    
+                    local localPosition = entitylib.character.RootPart.Position
+                    local ent = entitylib.EntityPosition({
+                        Origin = localPosition,
+                        Range = bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE + Range.Value,
+                        Wallcheck = Targets.Walls.Enabled or nil,
+                        Part = 'RootPart',
+                        Players = Targets.Players.Enabled,
+                        NPCs = Targets.NPCs.Enabled,
+                        Limit = 1,
+                        Sort = sortmethods[Mode.Value or 'Distance'],
+                    })
+                    
+                    -- Update Box Visuals
+                    local Slider = tick() - lastattacked < 0.1 and Attackcolor or Targetcolor
+                    box.Adornee = Show.Enabled and ent and ent.RootPart or nil
+                    if box.Adornee then
+                        box.Transparency = 1 - Slider.Opacity
+                        box.Color3 = Color3.fromHSV(Slider.Hue, Slider.Sat, Slider.Value)
+                    else
+                        box.Adornee = nil
+                    end
+                    
+                    if ent then
+                        -- Auto switch to sword
+                        if not store.hand or store.hand.tool ~= sword.tool then
+                            local hotbar = getHotbar(sword.tool)
+                            if hotbar then hotbarSwitch(hotbar) end
+                        end
+                        
+                        local localfacing = (inputService.KeyboardEnabled and gameCamera or entitylib.character.RootPart).CFrame.LookVector * Vector3.new(1, 0, 1)
+                        local delta = (ent.RootPart.Position - localPosition)
+                        local flat = delta * Vector3.new(1, 0, 1)
+                        local facingdot = flat.Magnitude > 0 and localfacing.Magnitude > 0 and (localfacing / localfacing.Magnitude):Dot(flat / flat.Magnitude) or 0
+                        
+                        if facingdot < math.cos(math.rad(Angle.Value) / 2) then
+                            if entitylib.isAlive then entitylib.character.Humanoid.AutoRotate = true end
+                            return
+                        end
+                        
+                        -- BUTTER SMOOTH AIMING MATH
+                        local targetPos = getAim(ent)
+                        local targetCFrame = CFrame.lookAt(localPosition, targetPos)
+                        
+                        -- Map Speed (1-10) to a smooth factor. 
+                        -- Using dt (delta time) makes it completely frame-rate independent.
+                        local smoothFactor = math.clamp((Speed.Value * 1.2) * dt, 0, 1)
+                        
+                        if SilentAim.Enabled then
+                            local charTargetCFrame = CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(targetPos.X, entitylib.character.RootPart.Position.Y, targetPos.Z))
+                            entitylib.character.RootPart.CFrame = entitylib.character.RootPart.CFrame:Lerp(charTargetCFrame, smoothFactor * 2)
+                            entitylib.character.Humanoid.AutoRotate = false
+                        else
+                            currentCameraCFrame = currentCameraCFrame:Lerp(targetCFrame, smoothFactor)
+                            gameCamera.CFrame = currentCameraCFrame
+                        end
+                        
+                        -- Swing logic
+                        if not LegitAura.Enabled and (tick() - lastattacked) >= (Perfect.Enabled and (meta.sword.attackSpeed or 0.11) or math.max(SwingTime.Value, 0.11)) then
+                            bedwars.SwordController:playSwordEffect(meta, false)
+                            bedwars.SwordController.lastSwing = tick()
+                        end
+                        
+                        if delta.Magnitude > bedwars.CombatConstant.RAYCAST_SWORD_CHARACTER_DISTANCE then
+                            return
+                        end
+                        
+                        lastattacked = tick()
+                        
+                        -- Attack logic
+                        if not Dynamic.Enabled or os.clock() - lastHit >= calculateHitreg(ent) then
+                            local dir = CFrame.lookAt(localPosition, ent.RootPart.Position).LookVector
+                            local pos = localPosition + dir * math.max(delta.Magnitude - 14.4, 0)
+                            bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+                            lastHit = os.clock()
+                            bedwars.Client:Get(remotes.AttackEntity):SendToServer({
+                                weapon = sword.tool,
+                                chargedAttack = {chargeRatio = 0},
+                                entityInstance = ent.Character,
+                                validate = {
+                                    raycast = {
+                                        cameraPosition = {value = pos},
+                                        cursorDirection = {value = dir},
+                                    },
+                                    targetPosition = {value = ent.RootPart.Position},
+                                    selfPosition = {value = pos},
+                                },
+                            })
+                        end
+                    else
+                        lastent = nil
+                        if entitylib.isAlive then entitylib.character.Humanoid.AutoRotate = true end
+                    end
+                end))
+            else
+                if entitylib.isAlive then
+                    entitylib.character.Humanoid.AutoRotate = true
+                end
+                box.Adornee = nil
+            end
+        end,
+        Tooltip = 'Automatically aims and attacks nearby target',
+    })
+    
+    -- UI Elements
+    Targets = SilentAura:CreateTargets({ Players = true, NPCs = true })
+    Speed = SilentAura:CreateSlider({ Name = 'Aim speed', Min = 1, Max = 10, Default = 6, Decimal = 5, Tooltip = 'How fast the Aura is going to aim' })
+    SwingTime = SilentAura:CreateSlider({ Name = 'Swing time', Darker = true, Visible = false, Min = 0, Max = 0.5, Default = 0.42, Decimal = 100 })
+    Range = SilentAura:CreateSlider({ Name = 'Extra swing distance', Tooltip = 'Where you will start swinging, not attacking', Min = 0, Max = 6, Suffix = function(val) return val <= 1 and 'stud' or 'studs' end, Decimal = 5, Default = 3 })
+    Angle = SilentAura:CreateSlider({ Name = 'Max angle', Min = 1, Max = 360, Default = 180 })
+    
+    local methods = {'Damage', 'Distance'}
+    for i in sortmethods do
+        if not table.find(methods, i) then table.insert(methods, i) end
+    end
+    Mode = SilentAura:CreateDropdown({ Name = 'Target mode', Default = 'Health', List = methods, Tooltip = 'How Aura should prioritize targets' })
+    Area = SilentAura:CreateDropdown({ Name = 'Target area', List = {'Center', 'Closest'}, Default = 'Center', Visible = false, Tooltip = 'Where the Aura will aim towards' })
+    
+    Perfect = SilentAura:CreateToggle({
+        Name = 'Perfect Swing', Default = true,
+        Function = function(callback) SwingTime.Object.Visible = not callback end,
+        Tooltip = 'Follows sword item\'s swing time'
+    })
+    Mouse = SilentAura:CreateToggle({Name = 'Require mouse down'})
+    Dynamic = SilentAura:CreateToggle({ Name = 'Dynamic hits', Default = true, Tooltip = 'Calculates the best hitreg for you, based off how far you are to the opponent.' })
+    LegitAura = SilentAura:CreateToggle({Name = 'Swing only'})
+    
+    SilentAim = SilentAura:CreateToggle({
+        Name = 'Silent Aim', Default = true,
+        Function = function(callback) Area.Object.Visible = not callback end,
+        Tooltip = 'Uses catvape\'s aiming technology to silently aim while looking legit',
+    })
+    
+    Show = SilentAura:CreateToggle({
+        Name = 'Show target', Default = true,
+        Function = function(callback)
+            pcall(function()
+                Targetcolor.Object.Visible = callback
+                Attackcolor.Object.Visible = callback
+            end)
+        end
+    })
+    Targetcolor = SilentAura:CreateColorSlider({ Name = 'Target color', Darker = true, DefaultOpacity = 0.5, DefaultHue = 1 })
+    Attackcolor = SilentAura:CreateColorSlider({ Name = 'Attack color', Darker = true, DefaultOpacity = 0.5 })
+    Limit = SilentAura:CreateToggle({Name = 'Limit to items'})
+end)
+
+run(function()
     local AutoBedWeaver
     local Range
     local BuildSpeed
@@ -33214,6 +33461,7 @@ run(function()
     local lastBuildTime = 0
     local bedPosition = nil
 
+    -- Block priority list for auto-selection
     local blockPriority = {
         {name = 'wool', types = {'wool_white', 'wool_red', 'wool_blue', 'wool_green', 'wool_yellow', 'wool_orange', 'wool_purple', 'wool_pink'}, value = 1},
         {name = 'wood', types = {'wood', 'planks'}, value = 2},
@@ -33266,42 +33514,80 @@ run(function()
         if not bed then return {} end
         local positions = {}
         local bedPos = bed:GetPivot().Position
-        local baseY = math.floor(bedPos.Y / 3) * 3
         
-        -- Pyramid layers (bottom to top) - builds infinitely
-        local maxLayers = 10
-        for layer = 0, maxLayers do
-            local offset = layer * 3
-            local height = layer * 3
-            
-            for x = -offset, offset, 3 do
-                for z = -offset, offset, 3 do
-                    -- Only place blocks on the outer edge (ring)
-                    if layer == 0 or math.abs(x) == offset or math.abs(z) == offset then
-                        if not (layer == 0 and x == 0 and z == 0) then -- Skip bed position
-                            local posX = math.floor((bedPos.X / 3) + x) * 3
-                            local posZ = math.floor((bedPos.Z / 3) + z) * 3
-                            local posY = baseY + height
-                            table.insert(positions, Vector3.new(posX, posY, posZ))
-                        end
-                    end
+        -- Layer 1: Base layer (7x7)
+        for x = -3, 3 do
+            for z = -3, 3 do
+                if x ~= 0 or z ~= 0 then
+                    local posX = math.floor((bedPos.X / 3) + x) * 3
+                    local posZ = math.floor((bedPos.Z / 3) + z) * 3
+                    local posY = math.floor(bedPos.Y / 3) * 3
+                    table.insert(positions, Vector3.new(posX, posY, posZ))
+                end
+            end
+        end
+        
+        -- Layer 2: Second layer (5x5)
+        for x = -2, 2 do
+            for z = -2, 2 do
+                if math.abs(x) == 2 or math.abs(z) == 2 then
+                    local posX = math.floor((bedPos.X / 3) + x) * 3
+                    local posZ = math.floor((bedPos.Z / 3) + z) * 3
+                    local posY = math.floor(bedPos.Y / 3) * 3 + 3
+                    table.insert(positions, Vector3.new(posX, posY, posZ))
                 end
             end
         end
         return positions
     end
 
-    local function canPlaceBlock(pos)
-        local block = getPlacedBlock(pos)
-        if block then return false end
+    local function canPlaceAt(pos)
+        -- Check if position is empty
+        local existingBlock = getPlacedBlock(pos)
+        if existingBlock then return false end
         
-        -- Check if position is near bed
-        if bedPosition then
-            local dist = (pos - bedPosition).Magnitude
-            if dist > (Range.Value * 3) then return false end
+        -- Check if adjacent to a solid block (REQUIRED FOR PLACEMENT)
+        local faces = {
+            Vector3.new(3,0,0), Vector3.new(-3,0,0), Vector3.new(0,3,0),
+            Vector3.new(0,-3,0), Vector3.new(0,0,3), Vector3.new(0,0,-3)
+        }
+        for _, face in ipairs(faces) do
+            if getPlacedBlock(pos + face) then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function switchToBestBlock(availableBlocks)
+        if #availableBlocks == 0 then return false end
+        
+        -- Find the best block we actually have equipped or can switch to
+        local bestBlock = availableBlocks[1]
+        
+        -- Check if we're already holding it
+        if store.hand.tool and store.hand.tool.Name == bestBlock.itemType then
+            return true
         end
         
-        return true
+        -- Try to find it in hotbar and switch
+        for i, slot in pairs(store.inventory.hotbar) do
+            if slot.item and slot.item.itemType == bestBlock.itemType then
+                hotbarSwitch(i - 1)
+                task.wait(0.05)
+                return true
+            end
+        end
+        
+        -- Not in hotbar, try to switch from inventory
+        for _, item in pairs(store.inventory.inventory.items) do
+            if item.itemType == bestBlock.itemType then
+                switchItem(item.tool, 0.05)
+                return true
+            end
+        end
+        
+        return false
     end
 
     AutoBedWeaver = vape.Categories.Utility:CreateModule({
@@ -33317,7 +33603,20 @@ run(function()
                     bedPosition = bed:GetPivot().Position
                     
                     local availableBlocks = getAvailableBlocks()
-                    if #availableBlocks == 0 then return end
+                    if #availableBlocks == 0 then 
+                        if tick() % 2 < 0.1 then
+                            vape:CreateNotification("AutoBedWeaver", "No blocks available!", 2)
+                        end
+                        return 
+                    end
+                    
+                    -- Auto-switch to the best available block
+                    if not switchToBestBlock(availableBlocks) then
+                        if tick() % 2 < 0.1 then
+                            vape:CreateNotification("AutoBedWeaver", "Cannot switch to " .. availableBlocks[1].name, 2)
+                        end
+                        return
+                    end
                     
                     local buildPositions = getBuildPositions(bed)
                     local placedThisCycle = false
@@ -33325,20 +33624,17 @@ run(function()
                     for _, pos in ipairs(buildPositions) do
                         if placedThisCycle then break end
                         
-                        if canPlaceBlock(pos) then
-                            -- Find best block to use (cheapest available)
-                            for _, blockData in ipairs(availableBlocks) do
-                                if blockData.amount > 0 then
-                                    local success = pcall(function()
-                                        bedwars.placeBlock(pos, blockData.itemType, false)
-                                    end)
-                                    
-                                    if success then
-                                        lastBuildTime = tick()
-                                        placedThisCycle = true
-                                        blockData.amount = blockData.amount - 1
-                                        break
-                                    end
+                        if canPlaceAt(pos) then
+                            local success = pcall(function()
+                                bedwars.placeBlock(pos, store.hand.tool.Name, false)
+                            end)
+                            
+                            if success then
+                                lastBuildTime = tick()
+                                placedThisCycle = true
+                            else
+                                if tick() % 3 < 0.1 then
+                                    vape:CreateNotification("AutoBedWeaver", "Failed to place block at " .. tostring(pos), 2)
                                 end
                             end
                         end
@@ -33355,7 +33651,7 @@ run(function()
                 bedPosition = nil
             end
         end,
-        Tooltip = 'Automatically builds infinite pyramid around your bed using cheapest blocks first'
+        Tooltip = 'Automatically builds protective structures around your bed'
     })
 
     Range = AutoBedWeaver:CreateSlider({
@@ -33398,4 +33694,5 @@ run(function()
         Tooltip = 'Use obsidian blocks (most expensive, used last)'
     })
 end)
+
 							
