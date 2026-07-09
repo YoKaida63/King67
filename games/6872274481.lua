@@ -33776,5 +33776,167 @@ run(function()
         Tooltip = 'Use obsidian blocks (most expensive, used last)'
     })
 end)
+run(function()
+    local AutoCrateStealer
+    local Range
+    local AutoPChest
+    local TeamCheck
+    local Delay
+    local DelaySlider
+    local stealRunning = false
+    local cachedPersonalChest = nil
+    local lastChestCheck = 0
+    local LootDelays = {}
+    
+    local function getPersonalChest()
+        local currentTime = tick()
+        if cachedPersonalChest and cachedPersonalChest.Parent and (currentTime - lastChestCheck) < 2 then
+            return cachedPersonalChest
+        end
+        cachedPersonalChest = replicatedStorage.Inventories:FindFirstChild(lplr.Name..'_personal')
+        lastChestCheck = currentTime
+        return cachedPersonalChest
+    end
+    
+    local function isEnemyChest(chestPart)
+        if not TeamCheck.Enabled then return true end
+        local chestTeam = chestPart:GetAttribute('Team') or chestPart:GetAttribute('TeamId')
+        local myTeam = lplr:GetAttribute('Team') or lplr:GetAttribute('TeamId')
+        if not chestTeam or not myTeam then return true end
+        return tostring(chestTeam) ~= tostring(myTeam)
+    end
+    
+    local function stealFromChest(chestPart)
+        local folderValue = chestPart:FindFirstChild('ChestFolderValue')
+        local chest = folderValue and folderValue.Value or nil
+        if not chest then return end
+        
+        local chestitems = chest:GetChildren()
+        if #chestitems <= 1 then return end
+        
+        if (LootDelays[chest] or 0) >= tick() then return end
+        LootDelays[chest] = tick() + (Delay.Enabled and DelaySlider.Value or 0.2)
+        
+        -- Observe the enemy chest
+        bedwars.Client:GetNamespace('Inventory'):Get('SetObservedChest'):SendToServer(chest)
+        task.wait(0.05)
+        
+        -- Steal all items and auto-deposit to personal chest
+        for _, v in ipairs(chestitems) do
+            if v:IsA('Accessory') then
+                pcall(function()
+                    bedwars.Client:GetNamespace('Inventory'):Get('ChestGetItem'):CallServer(chest, v)
+                end)
+                task.wait(0.05)
+                
+                -- Auto deposit to personal chest if enabled
+                if AutoPChest.Enabled then
+                    local personalChest = getPersonalChest()
+                    if personalChest then
+                        pcall(function()
+                            bedwars.Client:GetNamespace('Inventory'):Get('ChestGiveItem'):CallServer(personalChest, v)
+                        end)
+                        task.wait(0.05)
+                    end
+                end
+            end
+        end
+        
+        -- Stop observing
+        bedwars.Client:GetNamespace('Inventory'):Get('SetObservedChest'):SendToServer(nil)
+    end
+    
+    AutoCrateStealer = vape.Categories.Utility:CreateModule({
+        Name = 'AutoCrateStealer',
+        Function = function(callback)
+            if callback then
+                local chests = collection('chest', AutoCrateStealer)
+                stealRunning = true
+                
+                task.spawn(function()
+                    while stealRunning and AutoCrateStealer.Enabled do
+                        if not entitylib.isAlive then
+                            task.wait(0.1)
+                            continue
+                        end
+                        
+                        local localPosition = entitylib.character.RootPart.Position
+                        local range = Range.Value
+                        
+                        for _, chestPart in ipairs(chests) do
+                            if not stealRunning or not AutoCrateStealer.Enabled then break end
+                            if not chestPart or not chestPart.Parent then continue end
+                            
+                            local dist = (chestPart.Position - localPosition).Magnitude
+                            if dist <= range then
+                                if isEnemyChest(chestPart) then
+                                    stealFromChest(chestPart)
+                                end
+                            end
+                        end
+                        
+                        task.wait(0.1)
+                    end
+                end)
+            else
+                stealRunning = false
+                cachedPersonalChest = nil
+                table.clear(LootDelays)
+            end
+        end,
+        Tooltip = 'Automatically steals from enemy crates and deposits to personal chest'
+    })
+    
+    Range = AutoCrateStealer:CreateSlider({
+        Name = 'Range',
+        Min = 1,
+        Max = 30,
+        Default = 15,
+        Suffix = function(val)
+            return val == 1 and 'stud' or 'studs'
+        end,
+        Tooltip = 'Distance to auto-steal from crates'
+    })
+    
+    AutoPChest = AutoCrateStealer:CreateToggle({
+        Name = 'Auto Personal Chest',
+        Default = true,
+        Tooltip = 'Automatically deposits stolen loot into your personal chest'
+    })
+    
+    TeamCheck = AutoCrateStealer:CreateToggle({
+        Name = 'Enemy Only',
+        Default = true,
+        Tooltip = 'Only steal from enemy team crates'
+    })
+    
+    Delay = AutoCrateStealer:CreateToggle({
+        Name = 'Steal Delay',
+        Default = false,
+        Tooltip = 'Add delay between stealing from different crates',
+        Function = function(callback)
+            if DelaySlider and DelaySlider.Object then
+                DelaySlider.Object.Visible = callback
+            end
+        end
+    })
+    
+    DelaySlider = AutoCrateStealer:CreateSlider({
+        Name = 'Delay Time',
+        Min = 0.1,
+        Max = 3,
+        Default = 0.5,
+        Decimal = 10,
+        Suffix = 's',
+        Visible = false,
+        Tooltip = 'Cooldown between crate steals'
+    })
+    
+    task.defer(function()
+        if DelaySlider and DelaySlider.Object then
+            DelaySlider.Object.Visible = false
+        end
+    end)
+end)
 
 							
