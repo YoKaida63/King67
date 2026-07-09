@@ -33387,23 +33387,29 @@ run(function()
                             lastattacked = tick()
     
                             if not Dynamic.Enabled or os.clock() - lastHit >= calculateHitreg(ent) then
-                                local dir = CFrame.lookAt(localPosition, ent.RootPart.Position).LookVector
-                                local pos = localPosition + dir * math.max(delta.Magnitude - 14.4, 0)
+                                -- ✅ FIXED HITREG PAYLOAD
+                                local camOrigin = gameCamera.CFrame.Position
+                                local targetPos = ent.RootPart.Position
+                                local dir = CFrame.lookAt(camOrigin, targetPos).LookVector
+                                local spoofedPos = camOrigin + dir * math.max((targetPos - camOrigin).Magnitude - 14.399, 0)
+                                
                                 bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
                                 lastHit = os.clock()
+                                
                                 bedwars.Client:Get(remotes.AttackEntity):SendToServer({
                                     weapon = sword.tool,
                                     chargedAttack = {chargeRatio = 0},
+                                    lastSwingServerTimeDelta = math.clamp(math.random() * 0.6 + 0.2, 0.2, 0.8), -- Required by server
                                     entityInstance = ent.Character,
                                     validate = {
                                         raycast = {
-                                            cameraPosition = {value = pos},
+                                            cameraPosition = {value = camOrigin}, -- Must be actual camera
                                             cursorDirection = {value = dir},
                                         },
                                         targetPosition = {
-                                            value = ent.RootPart.Position,
+                                            value = targetPos,
                                         },
-                                        selfPosition = {value = pos},
+                                        selfPosition = {value = spoofedPos}, -- Must be spoofed reach position
                                     },
                                 })
                             end
@@ -33505,7 +33511,7 @@ run(function()
         Function = function(callback)
             Area.Object.Visible = not callback
         end,
-        Tooltip = 'Uses catvape\'s aiming technology to silently aim while looking legit',
+        Tooltip = 'Uses Kingifys\'s aiming technology to silently aim while looking legit',
     })
     Show = SilentAura:CreateToggle({
         Name = 'Show target',
@@ -33530,7 +33536,6 @@ run(function()
     })
     Limit = SilentAura:CreateToggle({Name = 'Limit to items'})
 end)
-
 run(function()
     local AutoBedWeaver
     local Range
