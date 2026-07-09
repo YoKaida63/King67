@@ -33202,3 +33202,200 @@ run(function()
         Tooltip = 'Only rapid buys when you hold down click for 0.3+ seconds. Single clicks buy normally.'
     })
 end)
+run(function()
+    local AutoBedWeaver
+    local Range
+    local BuildSpeed
+    local UseWool
+    local UseWood
+    local UseEndstone
+    local UseObsidian
+    local connections = {}
+    local lastBuildTime = 0
+    local bedPosition = nil
+
+    local blockPriority = {
+        {name = 'wool', types = {'wool_white', 'wool_red', 'wool_blue', 'wool_green', 'wool_yellow', 'wool_orange', 'wool_purple', 'wool_pink'}, value = 1},
+        {name = 'wood', types = {'wood', 'planks'}, value = 2},
+        {name = 'endstone', types = {'end_stone', 'endstone'}, value = 3},
+        {name = 'obsidian', types = {'obsidian'}, value = 4}
+    }
+
+    local function getBed()
+        if not (entitylib.isAlive and lplr.Character) then return nil end
+        local id = lplr.Character:GetAttribute('Team') or lplr.Character:GetAttribute('TeamId')
+        for _, v in collectionService:GetTagged('bed') do
+            if tonumber(id) == tonumber(v:GetAttribute('TeamId')) then
+                return v
+            end
+        end
+        return nil
+    end
+
+    local function getAvailableBlocks()
+        local available = {}
+        for _, item in pairs(store.inventory.inventory.items) do
+            local meta = bedwars.ItemMeta[item.itemType]
+            if meta and meta.block and not meta.block.seeThrough then
+                for _, priority in ipairs(blockPriority) do
+                    if table.find(priority.types, item.itemType) then
+                        local enabled = true
+                        if priority.name == 'wool' and not UseWool.Enabled then enabled = false end
+                        if priority.name == 'wood' and not UseWood.Enabled then enabled = false end
+                        if priority.name == 'endstone' and not UseEndstone.Enabled then enabled = false end
+                        if priority.name == 'obsidian' and not UseObsidian.Enabled then enabled = false end
+                        
+                        if enabled then
+                            table.insert(available, {
+                                itemType = item.itemType,
+                                amount = item.amount,
+                                priority = priority.value,
+                                name = priority.name
+                            })
+                        end
+                        break
+                    end
+                end
+            end
+        end
+        table.sort(available, function(a, b) return a.priority < b.priority end)
+        return available
+    end
+
+    local function getBuildPositions(bed)
+        if not bed then return {} end
+        local positions = {}
+        local bedPos = bed:GetPivot().Position
+        local baseY = math.floor(bedPos.Y / 3) * 3
+        
+        -- Pyramid layers (bottom to top) - builds infinitely
+        local maxLayers = 10
+        for layer = 0, maxLayers do
+            local offset = layer * 3
+            local height = layer * 3
+            
+            for x = -offset, offset, 3 do
+                for z = -offset, offset, 3 do
+                    -- Only place blocks on the outer edge (ring)
+                    if layer == 0 or math.abs(x) == offset or math.abs(z) == offset then
+                        if not (layer == 0 and x == 0 and z == 0) then -- Skip bed position
+                            local posX = math.floor((bedPos.X / 3) + x) * 3
+                            local posZ = math.floor((bedPos.Z / 3) + z) * 3
+                            local posY = baseY + height
+                            table.insert(positions, Vector3.new(posX, posY, posZ))
+                        end
+                    end
+                end
+            end
+        end
+        return positions
+    end
+
+    local function canPlaceBlock(pos)
+        local block = getPlacedBlock(pos)
+        if block then return false end
+        
+        -- Check if position is near bed
+        if bedPosition then
+            local dist = (pos - bedPosition).Magnitude
+            if dist > (Range.Value * 3) then return false end
+        end
+        
+        return true
+    end
+
+    AutoBedWeaver = vape.Categories.Utility:CreateModule({
+        Name = 'AutoBedWeaver',
+        Function = function(callback)
+            if callback then
+                local buildConn = runService.Heartbeat:Connect(function()
+                    if not entitylib.isAlive then return end
+                    if (tick() - lastBuildTime) < (BuildSpeed.Value / 10) then return end
+                    
+                    local bed = getBed()
+                    if not bed then return end
+                    bedPosition = bed:GetPivot().Position
+                    
+                    local availableBlocks = getAvailableBlocks()
+                    if #availableBlocks == 0 then return end
+                    
+                    local buildPositions = getBuildPositions(bed)
+                    local placedThisCycle = false
+                    
+                    for _, pos in ipairs(buildPositions) do
+                        if placedThisCycle then break end
+                        
+                        if canPlaceBlock(pos) then
+                            -- Find best block to use (cheapest available)
+                            for _, blockData in ipairs(availableBlocks) do
+                                if blockData.amount > 0 then
+                                    local success = pcall(function()
+                                        bedwars.placeBlock(pos, blockData.itemType, false)
+                                    end)
+                                    
+                                    if success then
+                                        lastBuildTime = tick()
+                                        placedThisCycle = true
+                                        blockData.amount = blockData.amount - 1
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end)
+                table.insert(connections, buildConn)
+            else
+                for _, conn in pairs(connections) do
+                    if typeof(conn) == "RBXScriptConnection" then
+                        conn:Disconnect()
+                    end
+                end
+                table.clear(connections)
+                bedPosition = nil
+            end
+        end,
+        Tooltip = 'Automatically builds infinite pyramid around your bed using cheapest blocks first'
+    })
+
+    Range = AutoBedWeaver:CreateSlider({
+        Name = 'Build Range',
+        Min = 3,
+        Max = 15,
+        Default = 7,
+        Suffix = ' blocks'
+    })
+
+    BuildSpeed = AutoBedWeaver:CreateSlider({
+        Name = 'Build Speed',
+        Min = 1,
+        Max = 20,
+        Default = 10,
+        Suffix = '/sec'
+    })
+
+    UseWool = AutoBedWeaver:CreateToggle({
+        Name = 'Use Wool',
+        Default = true,
+        Tooltip = 'Use wool blocks (cheapest, used first)'
+    })
+
+    UseWood = AutoBedWeaver:CreateToggle({
+        Name = 'Use Wood',
+        Default = true,
+        Tooltip = 'Use wood blocks'
+    })
+
+    UseEndstone = AutoBedWeaver:CreateToggle({
+        Name = 'Use Endstone',
+        Default = true,
+        Tooltip = 'Use endstone blocks'
+    })
+
+    UseObsidian = AutoBedWeaver:CreateToggle({
+        Name = 'Use Obsidian',
+        Default = false,
+        Tooltip = 'Use obsidian blocks (most expensive, used last)'
+    })
+end)
+							
