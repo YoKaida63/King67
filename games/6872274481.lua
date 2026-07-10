@@ -34100,3 +34100,73 @@ run(function()
         Darker = true
     })
 end)
+
+run(function()
+    local StreamProof
+    local hiddenModules = {}
+    
+    -- Save original notification functions so we can restore them later
+    local oldCreateNotification = vape.CreateNotification
+    local oldSendInfoNotification = bedwars.NotificationController and bedwars.NotificationController.sendInfoNotification
+    
+    -- VISUAL, COMBAT & DETECTION LIST (Automation/Kits removed)
+    local visualModules = {
+        -- ESP, Visuals, Spies & Info
+        'BedESP', 'KitESP', 'LootESP', 'NameTags', 'StorageESP', 'GeneratorESP', 
+        'BedPlates', 'KitRender', 'HitBoxes', 'GreyPlayers', 'RemovePlayerLevelUI', 
+        'SkinChanger', 'FishermanESP', 'BeehiveSpy', 'FishermanSpy', 'LuciaSpy', 
+        'ScriptDetector', 'StaffDetector', 'StaffHUD', 'BedAlarm', 'DRBedAlarm',
+        
+        -- Combat & Blatant
+        'Killaura', 'GrandKillaura', 'SilentAura', 'Silent Aura', 'AimAssist', 'SilentAim', 
+        'TriggerBot', 'Reach', 'Velocity', 'AutoClicker', 'HitFix', 'WhiteHits', 
+        'KnockbackDisplace', 'GodVulcan', 'Instant Kill', 'MouseTP', 'ServerFPSDropper', 
+        'Fly', 'Speed', 'LongJump', 'AntiFall', 'NoFall', 'Render NoFall', 'DamageBoost', 
+        'KeepSprint', 'NoSlowdown', 'BlockCPSRemover', 'FastBreak', 'NoCollision', 'Sprint', 
+        'ProjectileAimbot', 'BedAssist', 'MakePeopleusingHack',
+        
+        -- Utility, Misc & FPS Boosters
+        'Headless', 'AntiEffects', 'AntiMagma', 'ShopTierBypass', 'TaxRemover', 
+        'ProximityExtender', 'PickupRange', 'PromptUnlock', 'CustomCursor', 
+        'AnimationChanger', 'MotionBlur', 'Viewmodel', 'FPSBoost', 'ShadowRemover', 
+        'RemoveNeon', 'PotatoMode', 'Optimize', 'DisableStreamer', 'AC MOD View', 
+        'NightmareEmote', 'SetPlayerLevel', 'InvisibleCursor', 'ProximityPromptDuration', 
+        'GrimReaperFix', 'ClearMatchHistory', 'ViewMatchHistory', 'Leave Party', 'AntiAFK'
+    }
+
+    StreamProof = vape.Categories.Utility:CreateModule({
+        Name = 'StreamProof',
+        Tooltip = 'Panic button: Hides ESP, Aimbot, Blatant & Mutes ALL Notifications.',
+        Function = function(callback)
+            if callback then
+                -- 1. MUTE NOTIFICATIONS (Blocks Staff Detector, Bed Alarms, Spies, etc.)
+                vape.CreateNotification = function(...) return end
+                if bedwars.NotificationController and bedwars.NotificationController.sendInfoNotification then
+                    bedwars.NotificationController.sendInfoNotification = function(...) return end
+                end
+                
+                -- 2. Disable all visual/cheat modules
+                hiddenModules = {}
+                for _, name in ipairs(visualModules) do
+                    local module = vape.Modules[name]
+                    if module and module.Enabled then
+                        hiddenModules[name] = module
+                        pcall(function() module:Toggle(false) end)
+                    end
+                end
+            else
+                -- 1. RESTORE NOTIFICATIONS
+                vape.CreateNotification = oldCreateNotification
+                if bedwars.NotificationController and oldSendInfoNotification then
+                    bedwars.NotificationController.sendInfoNotification = oldSendInfoNotification
+                end
+                
+                -- 2. Re-enable modules that StreamProof hid
+                for name, module in pairs(hiddenModules) do
+                    pcall(function() module:Toggle(true) end)
+                end
+                hiddenModules = {}
+            end
+        end
+    })
+end)									
