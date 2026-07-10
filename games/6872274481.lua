@@ -34078,3 +34078,82 @@ run(function()
     })
 end)
 							
+run(function()
+    local AutoWTap
+    local Humanize
+    local MinDelay
+    local MaxDelay
+    local lastHitTime = 0
+    
+    -- We use the game's native sprint controller so it looks completely legit
+    local SprintController = bedwars.SprintController
+    
+    local function performWTap()
+        if not SprintController then return end
+        
+        -- Only W-Tap if we are currently moving forward/sprinting
+        if SprintController:isSprinting() then
+            -- Stop sprinting (Simulates releasing W)
+            SprintController:stopSprinting()
+            
+            -- Calculate delay (Humanizer makes it look legit)
+            local delay = 0.05 -- Default 50ms
+            if Humanize.Enabled then
+                -- Random delay between Min and Max (e.g., 40ms to 120ms)
+                delay = math.random(MinDelay.Value, MaxDelay.Value) / 1000
+            end
+            
+            -- Restart sprinting after the delay (Simulates pressing W again)
+            task.delay(delay, function()
+                if AutoWTap.Enabled then
+                    SprintController:startSprinting()
+                end
+            end)
+        end
+    end
+    
+    AutoWTap = vape.Categories.Combat:CreateModule({
+        Name = 'AutoWTap',
+        Function = function(callback)
+            if callback then
+                -- Hook into the damage event to detect when WE hit an enemy
+                AutoWTap:Clean(vapeEvents.EntityDamageEvent.Event:Connect(function(damageTable)
+                    -- Check if we are the attacker and the target is an enemy
+                    if damageTable.fromEntity == lplr.Character and damageTable.entityInstance ~= lplr.Character then
+                        local now = tick()
+                        -- Prevent spamming W-taps if hitting multiple times instantly
+                        if now - lastHitTime > 0.1 then 
+                            lastHitTime = now
+                            performWTap()
+                        end
+                    end
+                end))
+            end
+        end,
+        Tooltip = 'Automatically resets sprint when you hit an enemy. Ruins closet cheater combos and looks 100% legit.'
+    })
+    
+    Humanize = AutoWTap:CreateToggle({
+        Name = 'Humanizer',
+        Default = true,
+        Tooltip = 'Adds random delay so it doesn\'t look robotic'
+    })
+    
+    MinDelay = AutoWTap:CreateSlider({
+        Name = 'Min Delay',
+        Min = 20,
+        Max = 100,
+        Default = 40,
+        Suffix = 'ms',
+        Tooltip = 'Minimum time to hold W (lower = more knockback)'
+    })
+    
+    MaxDelay = AutoWTap:CreateSlider({
+        Name = 'Max Delay',
+        Min = 50,
+        Max = 200,
+        Default = 120,
+        Suffix = 'ms',
+        Tooltip = 'Maximum time to hold W'
+    })
+end)
