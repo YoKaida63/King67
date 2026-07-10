@@ -33052,159 +33052,7 @@ run(function()
         Tooltip = 'Replace ALL animations with the custom ID'
     })
 end)
-run(function()
-    local ShopRapidBuy
-    local BuyAmount
-    local BuyDelay
-    local OnlyWhenHolding
-    local connections = {}
-    local isBuying = false
-    local lastPurchase = nil
-    local lastPurchaseTime = 0
 
-    local PurchaseRemote = nil
-    task.spawn(function()
-        pcall(function()
-            PurchaseRemote = bedwars.Client:Get(remotes.BedwarsPurchaseItem).instance
-        end)
-    end)
-
-    local function isShopOpen()
-        local appOpen = false
-        pcall(function()
-            appOpen = bedwars.AppController:isAppOpen('BedwarsItemShopApp')
-        end)
-        if appOpen then return true end
-
-        -- Also check if near shop NPC
-        if entitylib.isAlive then
-            local localPosition = entitylib.character.RootPart.Position
-            for _, v in store.shop do
-                if v and v.RootPart and (v.RootPart.Position - localPosition).Magnitude <= 20 then
-                    return true
-                end
-            end
-        end
-        return false
-    end
-
-    ShopRapidBuy = vape.Categories.Inventory:CreateModule({
-        Name = 'ShopRapidBuy',
-        Function = function(callback)
-            if callback then
-                -- Hook into the purchase remote to detect what the user is buying
-                if PurchaseRemote then
-                    local oldInvoke = PurchaseRemote.InvokeServer
-                    PurchaseRemote.InvokeServer = function(self, ...)
-                        local args = {...}
-
-                        -- Only rapid buy if shop is open and we're not already in a rapid buy loop
-                        if ShopRapidBuy.Enabled and not isBuying and isShopOpen() then
-                            lastPurchase = args
-                            lastPurchaseTime = tick()
-
-                            -- Fire the first purchase normally
-                            local result = oldInvoke(self, unpack(args))
-
-                            -- Then rapid-fire the rest
-                            isBuying = true
-                            task.spawn(function()
-                                local amount = BuyAmount.Value - 1
-                                for i = 1, amount do
-                                    if not ShopRapidBuy.Enabled then break end
-                                    task.wait(BuyDelay.Value / 1000)
-                                    pcall(function()
-                                        oldInvoke(self, unpack(args))
-                                    end)
-                                end
-                                isBuying = false
-                            end)
-
-                            return result
-                        end
-
-                        return oldInvoke(self, unpack(args))
-                    end
-
-                    table.insert(connections, function()
-                        PurchaseRemote.InvokeServer = oldInvoke
-                    end)
-                end
-
-                -- Also hook MouseButton1 for when user clicks shop items directly
-                local clickConn = inputService.InputBegan:Connect(function(input)
-                    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-                    if not ShopRapidBuy.Enabled or not isShopOpen() then return end
-                    if isBuying then return end
-
-                    -- If OnlyWhenHolding is on, require the user to hold the click
-                    if OnlyWhenHolding.Enabled then
-                        task.spawn(function()
-                            local holdTime = 0
-                            while inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-                                holdTime += 0.1
-                                task.wait(0.1)
-                                -- After holding for 0.3 seconds, start rapid buying
-                                if holdTime >= 0.3 and lastPurchase then
-                                    isBuying = true
-                                    for i = 1, BuyAmount.Value do
-                                        if not inputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then break end
-                                        if not ShopRapidBuy.Enabled then break end
-                                        pcall(function()
-                                            PurchaseRemote:InvokeServer(unpack(lastPurchase))
-                                        end)
-                                        task.wait(BuyDelay.Value / 1000)
-                                    end
-                                    isBuying = false
-                                    break
-                                end
-                            end
-                        end)
-                    end
-                end)
-                table.insert(connections, clickConn)
-
-            else
-                -- Cleanup
-                for _, cleanup in ipairs(connections) do
-                    if typeof(cleanup) == "function" then
-                        pcall(cleanup)
-                    elseif typeof(cleanup) == "RBXScriptConnection" then
-                        cleanup:Disconnect()
-                    end
-                end
-                table.clear(connections)
-                isBuying = false
-                lastPurchase = nil
-            end
-        end,
-        Tooltip = 'Click once in shop to instantly buy multiple items. No more spam clicking.'
-    })
-
-    BuyAmount = ShopRapidBuy:CreateSlider({
-        Name = 'Buy Amount',
-        Min = 2,
-        Max = 64,
-        Default = 16,
-        Suffix = ' items',
-        Tooltip = 'How many times to buy when you click once'
-    })
-
-    BuyDelay = ShopRapidBuy:CreateSlider({
-        Name = 'Buy Delay',
-        Min = 10,
-        Max = 500,
-        Default = 50,
-        Suffix = 'ms',
-        Tooltip = 'Delay between each purchase. Too fast = server drops them.'
-    })
-
-    OnlyWhenHolding = ShopRapidBuy:CreateToggle({
-        Name = 'Hold to Rapid Buy',
-        Default = false,
-        Tooltip = 'Only rapid buys when you hold down click for 0.3+ seconds. Single clicks buy normally.'
-    })
-end)
 run(function()
     local SilentAura
     local Targets
@@ -34106,5 +33954,139 @@ run(function()
         Max = 500,
         Default = 100,
         Tooltip = 'Packets per frame (Higher = More server lag)'
+    })
+end)
+run(function()
+    local ShopQuickBuy -- coded by seven
+    local HoldDelay
+    local CPS
+    
+    local holding = false
+    local clickThread
+    
+    local function getShopId()
+        if not entitylib.isAlive then return nil end
+        local localPosition = entitylib.character.RootPart.Position
+        local id
+        for _, v in store.shop do
+            if v.Shop and (v.RootPart.Position - localPosition).Magnitude <= 20 then
+                id = v.Id
+            end
+        end
+        return id
+    end
+    
+    local function getHoveredItem()
+        local mousepos = (inputService:GetMouseLocation() - guiService:GetGuiInset())
+        for _, v in lplr.PlayerGui:GetGuiObjectsAtPosition(mousepos.X, mousepos.Y) do
+            local obj = v
+            while obj and obj ~= lplr.PlayerGui do
+                local itemType = obj.Name:match('^(.+)_ShopItemCard$')
+                if itemType then
+                    return itemType
+                end
+                obj = obj.Parent
+            end
+        end
+    end
+    
+    local function canBuy(item)
+        if item.ignoredByKit and table.find(item.ignoredByKit, store.equippedKit or '') then return false end
+        if item.lockedByForge or item.disabled then return false end
+        if item.require and item.require.teamUpgrade then
+            if (bedwars.Store:getState().Bedwars.teamUpgrades[item.require.teamUpgrade.upgradeId] or -1) < item.require.teamUpgrade.lowestTierIndex then
+                return false
+            end
+        end
+        local currency = getItem(item.currency)
+        return (currency and currency.amount or 0) >= item.price
+    end
+    
+    local function purchase(itemType, shopId)
+        if bedwars.BedwarsShopController.alreadyPurchasedMap[itemType] ~= nil then return end
+    
+        local item = bedwars.Shop.getShopItem(itemType, lplr, {shopId = shopId})
+        if not item or not canBuy(item) then return end
+    
+        bedwars.Client:Get('BedwarsPurchaseItem'):CallServerAsync({
+            shopItem = item,
+            shopId = shopId
+        }):andThen(function(suc)
+            if not suc then return end
+            bedwars.SoundManager:playSound(bedwars.SoundList.BEDWARS_PURCHASE_ITEM)
+            bedwars.Store:dispatch({
+                type = 'BedwarsAddItemPurchased',
+                itemType = itemType
+            })
+            if item.tiered then
+                bedwars.BedwarsShopController.alreadyPurchasedMap[itemType] = true
+            end
+        end)
+    end
+    
+    local function startClicking(itemType)
+        if clickThread then
+            task.cancel(clickThread)
+        end
+        clickThread = task.spawn(function()
+            repeat
+                local shopId = bedwars.AppController:isAppOpen('BedwarsItemShopApp') and store.shopLoaded and getShopId()
+                if shopId then
+                    purchase(itemType, shopId)
+                end
+                task.wait(1 / CPS.Value)
+            until not holding
+            clickThread = nil
+        end)
+    end
+    
+    ShopQuickBuy = vape.Categories.Combat:CreateModule({
+        Name = 'Shop Clicker',
+        Function = function(callback)
+            if callback then
+                ShopQuickBuy:Clean(inputService.InputBegan:Connect(function(input)
+                    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+                    if not bedwars.AppController:isAppOpen('BedwarsItemShopApp') then return end
+    
+                    local itemType = getHoveredItem()
+                    if not itemType then return end
+    
+                    holding = true
+                    task.delay(HoldDelay.Value, function()
+                        if holding and getHoveredItem() == itemType then
+                            startClicking(itemType)
+                        end
+                    end)
+                end))
+    
+                ShopQuickBuy:Clean(inputService.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        holding = false
+                    end
+                end))
+            else
+                holding = false
+                if clickThread then
+                    task.cancel(clickThread)
+                    clickThread = nil
+                end
+            end
+        end,
+        Tooltip = 'Hold on a shop item to rapidly buy it.'
+    })
+    HoldDelay = ShopQuickBuy:CreateSlider({
+        Name = 'Hold Delay',
+        Min = 0,
+        Max = 1,
+        Default = 0.15,
+        Decimal = 20,
+        Suffix = 'seconds'
+    })
+    CPS = ShopQuickBuy:CreateSlider({
+        Name = 'CPS',
+        Min = 1,
+        Max = 20,
+        Default = 20,
+        Darker = true
     })
 end)
