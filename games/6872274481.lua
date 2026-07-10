@@ -34157,3 +34157,85 @@ run(function()
         Tooltip = 'Maximum time to hold W'
     })
 end)
+run(function()
+    local ServerFPSDropper
+    local Method
+    local Intensity
+    local Active = false
+
+    ServerFPSDropper = vape.Categories.Blatant:CreateModule({
+        Name = 'ServerFPSDropper',
+        Function = function(callback)
+            if callback then
+                Active = true
+                task.spawn(function()
+                    while Active and ServerFPSDropper.Enabled do
+                        if entitylib.isAlive then
+                            local rootPos = entitylib.character.RootPart.Position
+                            local camPos = gameCamera.CFrame.Position
+                            local camDir = gameCamera.CFrame.LookVector
+                            local sword = store.hand.tool or (store.tools.sword and store.tools.sword.tool)
+                            
+                            if Method.Value == 'Block Spam' then
+                                -- Spawns tons of blocks, forcing the server to replicate them to all clients
+                                for i = 1, Intensity.Value do
+                                    local offset = Vector3.new(math.random(-12, 12), math.random(-12, 12), math.random(-12, 12)) * 3
+                                    pcall(bedwars.placeBlock, rootPos + offset, 'wool_white')
+                                end
+                            elseif Method.Value == 'Attack Spam' then
+                                -- Spams attack packets to overload the server's combat validation
+                                if sword then
+                                    for i = 1, Intensity.Value do
+                                        pcall(function()
+                                            bedwars.Client:Get(remotes.AttackEntity):SendToServer({
+                                                weapon = sword,
+                                                chargedAttack = {chargeRatio = 0},
+                                                entityInstance = lplr.Character,
+                                                validate = {
+                                                    raycast = {cameraPosition = {value = camPos}, cursorDirection = {value = camDir}},
+                                                    targetPosition = {value = rootPos},
+                                                    selfPosition = {value = rootPos}
+                                                }
+                                            })
+                                        end)
+                                    end
+                                end
+                            elseif Method.Value == 'Purchase Spam' then
+                                -- Spams shop remotes (uses task.spawn to prevent client yielding)
+                                for i = 1, Intensity.Value do
+                                    task.spawn(function()
+                                        pcall(function()
+                                            bedwars.Client:Get(remotes.BedwarsPurchaseItem):InvokeServer({
+                                                shopItem = {currency = "iron", itemType = "wool_white", amount = 1, price = 8},
+                                                shopId = "1_item_shop"
+                                            })
+                                        end)
+                                    end)
+                                end
+                            end
+                        end
+                        task.wait()
+                    end
+                end)
+            else
+                Active = false
+            end
+        end,
+        Tooltip = 'Overloads server replication & event loop to drop FPS for others'
+    })
+
+    Method = ServerFPSDropper:CreateDropdown({
+        Name = 'Method',
+        List = {'Block Spam', 'Attack Spam', 'Purchase Spam'},
+        Default = 'Block Spam',
+        Tooltip = 'Block Spam is best for visual lag, Attack/Purchase for server tick lag'
+    })
+
+    Intensity = ServerFPSDropper:CreateSlider({
+        Name = 'Intensity',
+        Min = 10,
+        Max = 500,
+        Default = 100,
+        Tooltip = 'Packets per frame (Higher = More server lag)'
+    })
+end)
