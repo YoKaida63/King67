@@ -30177,82 +30177,48 @@ run(function()
     })
 end)
 run(function()
-    local AutoAdetunde
-    local UpgradeToggles = {}
-    local DelaySlider
+local AutoAdetunde
+local UpgradeSelection
 
-    AutoAdetunde = vape.Categories.Kits:CreateModule({
-        Name = 'Auto Adetunde',
-        Function = function(callback)
-            if callback then
-                task.spawn(function()
-                    while AutoAdetunde.Enabled do
-                        local crystal = getItem('frost_crystal')
-                        if crystal and crystal.amount > 0 then
-                            -- Safely get current hammer upgrades
-                            local success, currentUpgrades = pcall(function()
-                                return bedwars.AdetundeUtil.getUpgradesFromHammer(lplr)
-                            end)
-                            
-                            if success and currentUpgrades then
-                                for upgradeId, currentLevel in pairs(currentUpgrades) do
-                                    if not AutoAdetunde.Enabled then break end
-                                    
-                                    -- Check if the toggle for this specific upgrade is enabled
-                                    local toggle = UpgradeToggles[upgradeId]
-                                    if toggle and toggle.Enabled then
-                                        -- Re-check crystal amount to ensure we still have enough
-                                        crystal = getItem('frost_crystal')
-                                        if not crystal or crystal.amount <= 0 then break end
-                                        
-                                        -- Get the next tier metadata
-                                        local meta = bedwars.AdetundeUpgradeMeta and bedwars.AdetundeUpgradeMeta[upgradeId]
-                                        if meta and meta.tiers then
-                                            local nextTier = meta.tiers[currentLevel + 1]
-                                            -- If next tier exists and we have enough crystals, upgrade
-                                            if nextTier and crystal.amount >= nextTier.price then
-                                                pcall(function()
-                                                    bedwars.Client:Get('UpgradeFrostyHammer'):CallServer(upgradeId)
-                                                end)
-                                                task.wait(DelaySlider.Value) -- Wait to prevent remote spam
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                        task.wait(0.5)
-                    end
-                end)
-            end
-        end,
-        Tooltip = 'Automatically upgrades your Frosty Hammer abilities when you have enough crystals.'
-    })
+AutoAdetunde = vape.Categories.Kits:CreateModule({
+Name = 'Auto Adetunde',
+Function = function(callback)
+if callback then
+repeat
+local crystal = getItem('frost_crystal')
+if crystal then
+for i, v in bedwars.AdetundeUtil.getUpgradesFromHammer(lplr) do
+local new = getItem('frost_crystal')
+if not new then
+break
+end
+crystal = new
+local nextUpgrade = bedwars.AdetundeUpgradeMeta[i].tiers[v + 1] or nil
+if nextUpgrade then
+-- Check if this upgrade matches the selected one, or if "All" is selected
+if UpgradeSelection.Value == "All" or UpgradeSelection.Value == i then
+if crystal.amount >= nextUpgrade.price then
+bedwars.Client:Get('UpgradeFrostyHammer'):CallServer(i)
+task.wait(0.1)
+end
+end
+end
+end
+end
+task.wait(0.5)
+until not AutoAdetunde.Enabled
+end
+end,
+Tooltip = 'Automatically upgrades ur frosty hammer'
+})
 
-    -- Dynamically create toggles for every Adetunde upgrade
-    if bedwars.AdetundeUpgradeMeta then
-        for upgradeId, meta in pairs(bedwars.AdetundeUpgradeMeta) do
-            local displayName = meta.name or upgradeId
-            local toggle = AutoAdetunde:CreateToggle({
-                Name = 'Auto ' .. displayName,
-                Default = true,
-                Tooltip = 'Automatically upgrade ' .. displayName
-            })
-            -- Store the toggle reference so we can check it later
-            UpgradeToggles[upgradeId] = toggle
-        end
-    end
+UpgradeSelection = AutoAdetunde:CreateDropdown({
+Name = 'Upgrade Selection',
+List = {'All', 'Damage', 'Shield', 'Cooldown'},
+Default = 'All',
+Tooltip = 'Select which upgrade to prioritize'
+})
 
-    -- Add a delay slider to prevent getting kicked for remote spam
-    DelaySlider = AutoAdetunde:CreateSlider({
-        Name = 'Upgrade Delay',
-        Min = 0.1,
-        Max = 2,
-        Default = 0.2,
-        Decimal = 10,
-        Suffix = 's',
-        Tooltip = 'Delay between upgrade attempts to prevent remote spam'
-    })
 end)
 run(function()
 	local AutoEmber
