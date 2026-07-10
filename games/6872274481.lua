@@ -30179,46 +30179,56 @@ end)
 run(function()
 local AutoAdetunde
 local UpgradeSelection
-
 AutoAdetunde = vape.Categories.Kits:CreateModule({
 Name = 'Auto Adetunde',
 Function = function(callback)
 if callback then
 repeat
 local crystal = getItem('frost_crystal')
-if crystal then
-for i, v in bedwars.AdetundeUtil.getUpgradesFromHammer(lplr) do
+if crystal and crystal.amount > 0 then
+local upgrades = bedwars.AdetundeUtil and bedwars.AdetundeUtil.getUpgradesFromHammer and bedwars.AdetundeUtil.getUpgradesFromHammer(lplr) or {}
+for i, v in pairs(upgrades) do
 local new = getItem('frost_crystal')
-if not new then
+if not new or new.amount <= 0 then
 break
 end
 crystal = new
-local nextUpgrade = bedwars.AdetundeUpgradeMeta[i].tiers[v + 1] or nil
+local upgradeMeta = bedwars.AdetundeUpgradeMeta and bedwars.AdetundeUpgradeMeta[i]
+if upgradeMeta then
+local nextUpgrade = upgradeMeta.tiers and upgradeMeta.tiers[v + 1] or nil
 if nextUpgrade then
--- Check if this upgrade matches the selected one, or if "All" is selected
-if UpgradeSelection.Value == "All" or UpgradeSelection.Value == i then
+local selected = UpgradeSelection.Value:lower()
+local upgradeId = tostring(i):lower()
+-- Fuzzy matching to ensure it catches the right upgrade regardless of internal naming
+local isMatch = selected == "all" or 
+                selected == upgradeId or 
+                (selected == "damage" and upgradeId:find("damage")) or 
+                (selected == "shield" and upgradeId:find("shield")) or 
+                (selected == "cooldown" and (upgradeId:find("cooldown") or upgradeId:find("speed")))
+if isMatch then
 if crystal.amount >= nextUpgrade.price then
-bedwars.Client:Get('UpgradeFrostyHammer'):CallServer(i)
+pcall(function()
+bedwars.Client:Get(remotes.UpgradeFrostyHammer or 'UpgradeFrostyHammer'):CallServer(i)
+end)
 task.wait(0.1)
 end
 end
 end
 end
 end
-task.wait(0.5)
+end
+task.wait(0.3) -- Checks faster so it upgrades the exact moment you get enough crystals
 until not AutoAdetunde.Enabled
 end
 end,
-Tooltip = 'Automatically upgrades ur frosty hammer'
+Tooltip = 'Automatically upgrades ur frosty hammer as soon as you have enough crystals'
 })
-
 UpgradeSelection = AutoAdetunde:CreateDropdown({
 Name = 'Upgrade Selection',
 List = {'All', 'Damage', 'Shield', 'Cooldown'},
 Default = 'All',
 Tooltip = 'Select which upgrade to prioritize'
 })
-
 end)
 run(function()
 	local AutoEmber
