@@ -34170,3 +34170,63 @@ run(function()
         end
     })
 end)									
+run(function()
+local WhimExploit
+local cap = 100
+
+WhimExploit = vape.Categories.Kits:CreateModule({
+Name = 'Whim Exploit',
+Function = function(callback)
+if callback then
+WhimExploit:Clean(runService.Heartbeat:Connect(function()
+if not entitylib.isAlive then return end
+local c = lplr.Character
+if not c then return end
+local w = c:GetAttribute('Whim')
+local m = c:GetAttribute('Mana')
+if w and w < cap then
+c:SetAttribute('Whim', cap)
+end
+if m and m < cap then
+c:SetAttribute('Mana', cap)
+         end
+   end))
+                 end
+                         end,
+Tooltip = 'infinite whim/mana for books'
+})
+                           end)
+run(function()
+local InfYamini
+local cap = 100
+
+InfYamini = vape.Categories.Kits:CreateModule({
+Name = 'InfYamini',
+Function = function(callback)
+if callback then
+InfYamini:Clean(runService.Heartbeat:Connect(function()
+if not entitylib.isAlive then return end
+local c = lplr.Character
+if not c then return end
+local s = c:GetAttribute('Stamina')
+local ys = c:GetAttribute('YaminiStamina')
+local ds = c:GetAttribute('DashStamina')
+if s and s < cap then
+c:SetAttribute('Stamina', cap)
+end
+if ys and ys < cap then
+c:SetAttribute('YaminiStamina', cap)
+end
+if ds and ds < cap then
+c:SetAttribute('DashStamina', cap)
+end
+local ps = lplr:GetAttribute('Stamina')
+if ps and ps < cap then
+lplr:SetAttribute('Stamina', cap)
+end
+end))
+end
+end,
+Tooltip = 'infinite stamina for yamini'
+})
+end)
