@@ -33753,3 +33753,167 @@ end,
 Tooltip = 'infinite stamina for yamini'
 })
 end)
+run(function()
+    local AutoFreiya
+    local Range
+    local FOV
+    local AutoExplosion
+    local PriorityMode
+    local FrostStacks = {}
+    local lastExplosionTime = 0
+    local explosionCooldown = 0.5
+    
+    local function getFrostStacks(ent)
+        if not ent or not ent.Character then return 0 end
+        return FrostStacks[ent] or 0
+    end
+    
+    local function updateFrostStacks()
+        for _, ent in ipairs(entitylib.List) do
+            if ent.Targetable and ent.Character and ent.Character.Parent then
+                -- Check for frostbite attribute or visual indicator
+                local stacks = ent.Character:GetAttribute('FrostStacks') or 
+                              ent.Character:GetAttribute('Frostbite') or 0
+                FrostStacks[ent] = stacks
+            end
+        end
+    end
+    
+    local function getTargetWithMostStacks(origin)
+        local best, bestStacks = nil, 0
+        local fovRadius = math.tan(math.rad(FOV.Value / 2))
+        
+        for _, ent in ipairs(entitylib.List) do
+            if ent.Targetable and ent.RootPart and ent.Character and ent.Character.Parent then
+                local hum = ent.Character:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    local stacks = getFrostStacks(ent)
+                    if stacks > 0 then
+                        local dist = (ent.RootPart.Position - origin).Magnitude
+                        if dist <= Range.Value then
+                            -- FOV Check
+                            local screenPos, onScreen = gameCamera:WorldToViewportPoint(ent.RootPart.Position)
+                            if onScreen then
+                                local centerX = gameCamera.ViewportSize.X / 2
+                                local centerY = gameCamera.ViewportSize.Y / 2
+                                local dx = (screenPos.X - centerX) / gameCamera.ViewportSize.X
+                                local dy = (screenPos.Y - centerY) / gameCamera.ViewportSize.Y
+                                local screenDist = math.sqrt(dx * dx + dy * dy)
+                                
+                                if screenDist <= fovRadius then
+                                    if PriorityMode.Enabled then
+                                        -- Prioritize enemies with 4+ stacks (Frostbite)
+                                        if stacks >= 4 and stacks > bestStacks then
+                                            bestStacks = stacks
+                                            best = ent
+                                        end
+                                    else
+                                        if stacks > bestStacks then
+                                            bestStacks = stacks
+                                            best = ent
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return best, bestStacks
+    end
+    
+    local function useFrostExplosion()
+        if not entitylib.isAlive then return false end
+        local now = tick()
+        if now - lastExplosionTime < explosionCooldown then return false end
+        
+        -- Check if ability is available
+        if not bedwars.AbilityController:canUseAbility('FREIYA_FROST_EXPLOSION') then
+            return false
+        end
+        
+        local target, stacks = getTargetWithMostStacks(entitylib.character.RootPart.Position)
+        if target and stacks > 0 then
+            -- Use Frost Explosion ability
+            pcall(function()
+                bedwars.AbilityController:useAbility('FREIYA_FROST_EXPLOSION')
+            end)
+            lastExplosionTime = now
+            return true
+        end
+        return false
+    end
+    
+    AutoFreiya = vape.Categories.Kits:CreateModule({
+        Name = 'AutoFreiya',
+        Function = function(callback)
+            if callback then
+                -- Track frost stacks on damage
+                AutoFreiya:Clean(vapeEvents.EntityDamageEvent.Event:Connect(function(damageTable)
+                    if damageTable.fromEntity == lplr.Character and damageTable.entityInstance then
+                        local victim = playersService:GetPlayerFromCharacter(damageTable.entityInstance)
+                        if victim then
+                            for _, ent in ipairs(entitylib.List) do
+                                if ent.Player == victim then
+                                    local currentStacks = FrostStacks[ent] or 0
+                                    -- Ice Sword gives 2 stacks, regular gives 1
+                                    local isIceSword = store.hand.tool and 
+                                                      (store.hand.tool.Name:find('ice') or 
+                                                       store.hand.tool.Name:find('Ice'))
+                                    local stacksToAdd = isIceSword and 2 or 1
+                                    FrostStacks[ent] = math.min(currentStacks + stacksToAdd, 4)
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end))
+                
+                -- Main loop
+                AutoFreiya:Clean(runService.Heartbeat:Connect(function()
+                    if not entitylib.isAlive then return end
+                    if store.equippedKit and store.equippedKit ~= 'freiya' then return end
+                    
+                    updateFrostStacks()
+                    
+                    if AutoExplosion.Enabled then
+                        useFrostExplosion()
+                    end
+                end))
+            else
+                FrostStacks = {}
+                lastExplosionTime = 0
+            end
+        end,
+        Tooltip = 'Auto uses Frost Explosion on enemies with Frost stacks'
+    })
+    
+    Range = AutoFreiya:CreateSlider({
+        Name = 'Range',
+        Min = 5,
+        Max = 50,
+        Default = 20,
+        Suffix = ' studs'
+    })
+    
+    FOV = AutoFreiya:CreateSlider({
+        Name = 'FOV',
+        Min = 1,
+        Max = 360,
+        Default = 180,
+        Tooltip = 'Field of view for target detection'
+    })
+    
+    AutoExplosion = AutoFreiya:CreateToggle({
+        Name = 'Auto Frost Explosion',
+        Default = true,
+        Tooltip = 'Automatically uses Frost Explosion on enemies with Frost stacks'
+    })
+    
+    PriorityMode = AutoFreiya:CreateToggle({
+        Name = 'Priority Mode',
+        Default = true,
+        Tooltip = 'Prioritizes enemies with 4+ stacks (Frostbite)'
+    })
+end)
