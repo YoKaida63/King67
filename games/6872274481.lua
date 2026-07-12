@@ -21632,6 +21632,7 @@ run(function()
     ShowOwnTeamGen = nil
     ShowEnemyTeamGen = nil
     local UIStyle
+    local UIScaleSlider -- Added for UI Scaling
     local CompactDiamondToggle
     local CompactEmeraldToggle
     local CollectionService = collectionService
@@ -21682,6 +21683,11 @@ run(function()
     mainFrame.Position = UDim2.new(1, -8, 1, -8)
     mainFrame.Size = UDim2.new(0, 120, 0, 100)
     mainFrame.AnchorPoint = Vector2.new(1, 1)
+
+    -- Added UIScale for proportional resizing
+    local uiScale = Instance.new('UIScale')
+    uiScale.Scale = 1
+    uiScale.Parent = mainFrame
 
     local uicorner = Instance.new('UICorner')
     uicorner.CornerRadius = UDim.new(0, 8)
@@ -22348,9 +22354,26 @@ run(function()
             if ShowEnemyTeamGen then ShowEnemyTeamGen.Object.Visible = isOriginal and TeamGenToggle.Enabled end
             if CompactDiamondToggle then CompactDiamondToggle.Object.Visible = not isOriginal end
             if CompactEmeraldToggle then CompactEmeraldToggle.Object.Visible = not isOriginal end
+            if UIScaleSlider then UIScaleSlider.Object.Visible = not isOriginal end
             refreshESP()
         end,
         Tooltip = 'Choose between original billboard ESP or compact side UI'
+    })
+
+    -- Added Scale Slider
+    UIScaleSlider = GeneratorESP:CreateSlider({
+        Name = 'Compact UI Scale',
+        Min = 50,
+        Max = 250,
+        Default = 100,
+        Suffix = '%',
+        Visible = false,
+        Function = function(val)
+            if uiScale then
+                uiScale.Scale = val / 100
+            end
+        end,
+        Tooltip = 'Change the size of the compact UI'
     })
 
     DiamondToggle = GeneratorESP:CreateToggle({
