@@ -1172,7 +1172,6 @@ run(function()
 						attackTable.validate.selfPosition.value += CFrame.lookAt(selfpos, targetpos).LookVector * math.max((selfpos - targetpos).Magnitude - 14.399, 0)
 					end
 
-					--[[
 					if suc and plr then
 						if getAccountTier(lplr) == 0 and getAccountTier(plr) <= 4 then
 							return
@@ -1181,8 +1180,7 @@ run(function()
 							return
 						end
 					end
-					--]]
-
+                    
 					return call:SendToServer(attackTable, ...)
 				end
 			}
